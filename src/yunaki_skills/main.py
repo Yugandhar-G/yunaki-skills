@@ -12,7 +12,6 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import (
-    Depends,
     FastAPI,
     File,
     Form,
@@ -40,6 +39,7 @@ from yunaki_skills.config import build_mongo_uri
 from yunaki_skills.config import get as cfg
 from yunaki_skills.live_runs import STREAM_DONE, broker
 from yunaki_skills.run_orchestrator import execute_run
+from yunaki_skills.skill_bank import SkillBank
 
 logger = logging.getLogger(__name__)
 

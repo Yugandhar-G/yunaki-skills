@@ -130,3 +130,17 @@ def install_fake_gemini(monkeypatch, module, response_text: str) -> MagicMock:
     fake_client.models.generate_content.return_value = make_gemini_response(response_text)
     monkeypatch.setattr(module.genai, "Client", lambda *a, **k: fake_client)
     return fake_client
+
+
+def install_fake_skill_llm(monkeypatch, response_text: str) -> MagicMock:
+    """Patch ``skill_llm.complete_json`` to return ``response_text``.
+
+    This is the seam the meta-ops (extractor/evolver/judge) now route through.
+    Returns the MagicMock so tests can assert on the prompt it received via
+    ``mock.call_args[0][0]``.
+    """
+    from yunaki_skills import skill_llm
+
+    mock = MagicMock(return_value=response_text)
+    monkeypatch.setattr(skill_llm, "complete_json", mock)
+    return mock

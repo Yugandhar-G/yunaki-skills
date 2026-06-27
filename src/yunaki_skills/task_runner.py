@@ -27,6 +27,7 @@ from typing import Callable, Optional
 
 from yunaki_skills import governance
 from yunaki_skills.agent_factory import build_agent
+from yunaki_skills.contrastive_runner import ContrastiveRunner, rollouts_from_env
 from yunaki_skills.eval_scorer import EvalScorer
 from yunaki_skills.interfaces import (
     AgentClient,
@@ -37,6 +38,7 @@ from yunaki_skills.interfaces import (
 from yunaki_skills.interfaces import (
     TaskRunner as ITaskRunner,
 )
+from yunaki_skills.reward import RewardComposer
 from yunaki_skills.skill_bank import SkillBank
 from yunaki_skills.skill_evolver import SkillEvolver
 from yunaki_skills.skill_extractor import SkillExtractor
@@ -50,6 +52,24 @@ _SNAPSHOT_FILENAME = "solution.py"
 
 def _truthy(value: str) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _snapshot_workspace(workspace: str) -> str:
+    """Copy the whole workspace tree to a sibling temp dir and return its path.
+
+    Real coding-agent CLIs edit a directory of files, so the pre-agent state is a
+    full tree, not a single file. This snapshot is what the control-arm reset
+    restores from.
+    """
+    snapshot = tempfile.mkdtemp(prefix="yunaki_snap_")
+    shutil.copytree(workspace, snapshot, dirs_exist_ok=True)
+    return snapshot
+
+
+def _restore_workspace(workspace: str, snapshot: str) -> None:
+    """Revert the workspace to the snapshot, discarding any agent edits."""
+    shutil.rmtree(workspace, ignore_errors=True)
+    shutil.copytree(snapshot, workspace)
 
 
 def _demo_handicap_clause(iteration: int) -> str:
@@ -111,6 +131,10 @@ class TaskRunner(ITaskRunner):
         # detects an installed coding-agent CLI and falls back to the Gemini SDK.
         self._agent = agent if agent is not None else build_agent()
         self._scorer = EvalScorer()
+        # Composite-reward overlay (no-op unless YUNAKI_COMPOSITE_REWARD is set).
+        self._reward = RewardComposer()
+        # Contrastive multi-rollout extraction (no-op unless rollouts > 1).
+        self._contrastive = ContrastiveRunner(self._agent, self._scorer, self._extractor)
 
     @staticmethod
     def _emit(progress: Optional[Callable[[dict], None]], event: dict) -> None:
@@ -182,6 +206,7 @@ class TaskRunner(ITaskRunner):
         test_command: Optional[list[str]] = None,
         max_iterations: int = 3,
         progress: Optional[Callable[[dict], None]] = None,
+        rollouts: Optional[int] = None,
     ) -> TaskResult:
         """Run a task through the full skill evolution loop.
 
@@ -196,6 +221,10 @@ class TaskRunner(ITaskRunner):
             with open(os.path.join(workspace, _SNAPSHOT_FILENAME), "w") as f:
                 f.write(code_snapshot)
 
+        # Snapshot the pre-agent tree so the control-arm reset can restore it
+        # exactly, regardless of how many files the agent creates/edits/deletes.
+        snapshot_dir = _snapshot_workspace(workspace)
+
         try:
             return self._run_in_workspace(
                 task_description=task_description,
@@ -203,10 +232,12 @@ class TaskRunner(ITaskRunner):
                 test_command=test_command,
                 max_iterations=max_iterations,
                 progress=progress,
-                code_snapshot=code_snapshot,
+                snapshot_dir=snapshot_dir,
+                rollouts=rollouts_from_env(rollouts),
             )
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
 
     def _run_in_workspace(
         self,
@@ -215,7 +246,8 @@ class TaskRunner(ITaskRunner):
         test_command: Optional[list[str]],
         max_iterations: int,
         progress: Optional[Callable[[dict], None]],
-        code_snapshot: str = "",
+        snapshot_dir: str,
+        rollouts: int = 1,
     ) -> TaskResult:
         logger.info(
             "TaskRunner starting: task=%r  org_id=%s  max_iterations=%d",
@@ -309,7 +341,7 @@ class TaskRunner(ITaskRunner):
         # measures ONLY the skill contribution.
         try:
             print("\n[2] Control arm: running agent WITHOUT skills...")
-            control_trace = self._agent.run_task(
+            self._agent.run_task(
                 task_description=task_description,
                 skills=[],  # <-- NO SKILLS
                 repo_path=workspace,
@@ -332,12 +364,10 @@ class TaskRunner(ITaskRunner):
                     "tasks_total": control_eval.tasks_total,
                 },
             )
-            # Reset workspace to pre-control state for the skilled run
-            # (so the skilled run starts from the same baseline, not from
-            # the control arm's output)
-            if code_snapshot:
-                with open(os.path.join(workspace, _SNAPSHOT_FILENAME), "w") as f:
-                    f.write(code_snapshot)
+            # Reset workspace to pre-control state for the skilled run, so it
+            # starts from the same baseline rather than the control arm's output.
+            # Full-tree restore handles agents that edit/create/delete many files.
+            _restore_workspace(workspace, snapshot_dir)
         except Exception as e:
             logger.warning("Control arm failed (agent without skills): %s", e)
             print(f"  [WARN] Control arm failed: {e}. skill_delta will be None.")
@@ -409,6 +439,8 @@ class TaskRunner(ITaskRunner):
             # ─── Step 5: Evaluate the result ─────────────────────────────
             print(f"  [5] Evaluating iteration {iteration}...")
             eval_result = _evaluate()
+            # Composite-reward overlay (signal only; never changes passed/score).
+            eval_result = self._reward.compose(task_description, eval_result, workspace)
             current_score = eval_result.score
             print(f"  Result: {eval_result.tasks_passed}/{eval_result.tasks_total} = {current_score:.0f}%")
             self._emit(
@@ -421,6 +453,7 @@ class TaskRunner(ITaskRunner):
                     "passed": eval_result.passed,
                     "tasks_passed": eval_result.tasks_passed,
                     "tasks_total": eval_result.tasks_total,
+                    "composite_score": eval_result.composite_score,
                 },
             )
 
@@ -507,16 +540,32 @@ class TaskRunner(ITaskRunner):
                         )
                 continue
 
-            # First failure of the run — extract a fresh skill from the trace.
+            # First failure of the run — extract a fresh skill. With rollouts > 1,
+            # try contrastive extraction (best-passing vs worst-failing rollout)
+            # first; fall back to single-trace extraction when there's no contrast.
             new_skill: Optional[Skill] = None
-            try:
-                new_skill = self._extractor.extract(
-                    task_description=task_description,
-                    trace=trace,
-                    eval_result=eval_result,
-                )
-            except Exception as e:
-                logger.warning("Skill extraction failed: %s", e)
+            if rollouts > 1:
+                try:
+                    print(f"  [8] Contrastive extraction over {rollouts} rollouts...")
+                    new_skill = self._contrastive.run(
+                        task_description=task_description,
+                        snapshot_dir=snapshot_dir,
+                        skills=task_skills,
+                        test_command=test_command,
+                        n=rollouts,
+                    )
+                except Exception as e:
+                    logger.warning("Contrastive extraction failed: %s", e)
+
+            if new_skill is None:
+                try:
+                    new_skill = self._extractor.extract(
+                        task_description=task_description,
+                        trace=trace,
+                        eval_result=eval_result,
+                    )
+                except Exception as e:
+                    logger.warning("Skill extraction failed: %s", e)
 
             if not new_skill:
                 continue

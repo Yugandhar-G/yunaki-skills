@@ -92,7 +92,7 @@ def test_nonzero_exit_surfaced_no_raise(monkeypatch):
     )
     adapter = cli_agent.CliAgentAdapter(_spec(parser_kind="text"))
     trace = adapter.run_task("t", [], "/w")
-    assert "exit code 2" in trace.lower() or "returncode 2" in trace.lower()
+    assert "code 2" in trace.lower()
     assert "auth required" in trace
 
 

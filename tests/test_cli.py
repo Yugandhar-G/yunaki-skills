@@ -28,7 +28,7 @@ def test_run_command_invokes_task_runner(monkeypatch, capsys):
     rc = main(["run", "implement endpoint", "--max-iterations", "2"])
 
     assert rc == 0
-    runner.run.assert_called_once_with("implement endpoint", max_iterations=2)
+    runner.run.assert_called_once_with("implement endpoint", max_iterations=2, rollouts=None)
     out = capsys.readouterr().out
     assert "20% -> 90%" in out
 
@@ -94,7 +94,7 @@ def test_skills_evolve_success(monkeypatch, capsys):
 
     agent = MagicMock()
     agent.run_task.return_value = "trace"
-    monkeypatch.setattr("yunaki_skills.antigravity_client.AntigravityClient", lambda: agent)
+    monkeypatch.setattr("yunaki_skills.agent_factory.build_agent", lambda: agent)
 
     from yunaki_skills.interfaces import EvalResult
 
@@ -116,3 +116,25 @@ def test_skills_evolve_success(monkeypatch, capsys):
 def test_parser_requires_command():
     with pytest.raises(SystemExit):
         build_parser().parse_args([])
+
+
+def test_doctor_reports_selection(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "yunaki_skills.agent_factory.selection_summary",
+        lambda: {"override": None, "available": ["claude", "aider"], "selected": "claude"},
+    )
+    rc = main(["doctor"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "claude" in out
+    assert "selected: claude" in out
+
+
+def test_doctor_json(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "yunaki_skills.agent_factory.selection_summary",
+        lambda: {"override": "codex", "available": ["codex"], "selected": "codex"},
+    )
+    rc = main(["--json", "doctor"])
+    assert rc == 0
+    assert '"selected": "codex"' in capsys.readouterr().out

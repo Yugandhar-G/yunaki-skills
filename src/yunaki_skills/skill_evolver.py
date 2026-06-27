@@ -3,10 +3,7 @@
 import json
 from datetime import datetime, timezone
 
-from google import genai
-from google.genai import types
-
-from yunaki_skills.config import get
+from yunaki_skills import skill_llm
 from yunaki_skills.interfaces import (
     EvalResult,
     Provenance,
@@ -67,12 +64,7 @@ Respond with ONLY the JSON object, no markdown formatting, no explanation."""
 
 
 class SkillEvolver(SkillEvolver):
-    """Gemini-powered skill evolution."""
-
-    def __init__(self):
-        api_key = get("GEMINI_API_KEY")
-        self._client = genai.Client(api_key=api_key)
-        self._model = "gemini-2.5-flash"
+    """Skill evolution via the configured skill-model backend."""
 
     def evolve(self, skill: Skill, new_trace: str, new_eval: EvalResult) -> Skill:
         """Evolve an existing skill based on new execution evidence."""
@@ -90,16 +82,7 @@ class SkillEvolver(SkillEvolver):
         )
 
         try:
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.3,
-                    response_mime_type="application/json",
-                ),
-            )
-
-            text = response.text.strip()
+            text = (skill_llm.complete_json(prompt) or "").strip()
             if not text:
                 # Fallback: return evolved version with minimal changes
                 return self._fallback_evolve(skill, new_eval)

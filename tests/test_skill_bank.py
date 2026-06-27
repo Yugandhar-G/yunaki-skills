@@ -73,6 +73,39 @@ def test_search_semantic_ranks_relevant_first(skill_bank):
     assert results[0].id == "skill_users_endpoint"
 
 
+def test_search_semantic_breaks_ties_by_quality(skill_bank):
+    """At equal similarity, the higher-scoring skill ranks first."""
+    high = make_task_skill("skill_high", score=90.0)
+    low = make_task_skill("skill_low", score=20.0)
+    # Identical embedding text -> identical similarity; quality is the tiebreaker.
+    for s in (high, low):
+        s.title = "Implement users endpoint"
+        s.trigger.query = "implement get users endpoint"
+        s.when_to_apply = "when implementing endpoints"
+    skill_bank.add(high)
+    skill_bank.add(low)
+
+    results = skill_bank.search_semantic("implement get users endpoint", top_k=2)
+    assert results[0].id == "skill_high"
+
+
+def test_search_semantic_prefers_proven_skill(skill_bank):
+    """At equal similarity and score, a proven success record wins over neutral."""
+    proven = make_task_skill("skill_proven", score=50.0)
+    proven.usage_count = 10
+    proven.success_count = 9  # 0.9 success rate
+    fresh = make_task_skill("skill_fresh", score=50.0)  # 0 usage -> neutral prior
+    for s in (proven, fresh):
+        s.title = "Implement users endpoint"
+        s.trigger.query = "implement get users endpoint"
+        s.when_to_apply = "when implementing endpoints"
+    skill_bank.add(proven)
+    skill_bank.add(fresh)
+
+    results = skill_bank.search_semantic("implement get users endpoint", top_k=2)
+    assert results[0].id == "skill_proven"
+
+
 def test_search_semantic_empty_bank(skill_bank):
     assert skill_bank.search_semantic("anything") == []
 
@@ -106,6 +139,41 @@ def test_search_pattern_skips_task_level(skill_bank, task_skill):
     """Task-level (semantic) skills must not be returned by pattern search."""
     skill_bank.add(task_skill)
     assert skill_bank.search_pattern("anything") == []
+
+
+def test_drop_removes_and_archives(skill_bank, task_skill):
+    skill_bank.add(task_skill)
+    assert skill_bank.drop(task_skill.id, reason="stale") is True
+    assert skill_bank.get(task_skill.id) is None
+    # Soft-delete: still recoverable from history.
+    assert any(h.id == task_skill.id for h in skill_bank.get_history(task_skill.id))
+
+
+def test_drop_missing_returns_false(skill_bank):
+    assert skill_bank.drop("ghost") is False
+
+
+def test_merge_combines_counts_and_drops_sources(skill_bank):
+    a = make_task_skill("skill_a")
+    a.usage_count, a.success_count = 4, 3
+    b = make_task_skill("skill_b")
+    b.usage_count, b.success_count = 6, 2
+    skill_bank.add(a)
+    skill_bank.add(b)
+
+    merged_id = skill_bank.merge(["skill_a", "skill_b"], make_task_skill("skill_merged"))
+
+    assert merged_id == "skill_merged"
+    got = skill_bank.get("skill_merged")
+    assert got.usage_count == 10  # summed, not reset
+    assert got.success_count == 5
+    assert set(got.provenance.merged_from) == {"skill_a", "skill_b"}
+    assert skill_bank.get("skill_a") is None
+    assert skill_bank.get("skill_b") is None
+
+
+def test_merge_no_sources_returns_none(skill_bank):
+    assert skill_bank.merge(["ghost"], make_task_skill("skill_m")) is None
 
 
 def test_get_history_tracks_versions(skill_bank, task_skill):

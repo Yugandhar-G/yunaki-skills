@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from tests.conftest import install_fake_gemini, make_task_skill
+from tests.conftest import install_fake_skill_llm, make_task_skill
 from yunaki_skills import skill_evolver as evo_mod
 
 EVOLVED_JSON = json.dumps(
@@ -26,7 +26,7 @@ EVOLVED_JSON = json.dumps(
 
 
 def test_evolve_increments_version_and_bumps_score(monkeypatch, eval_fail):
-    install_fake_gemini(monkeypatch, evo_mod, EVOLVED_JSON)
+    install_fake_skill_llm(monkeypatch, EVOLVED_JSON)
     parent = make_task_skill(score=60.0)
 
     evolved = evo_mod.SkillEvolver().evolve(parent, "new trace", eval_fail)
@@ -40,7 +40,7 @@ def test_evolve_increments_version_and_bumps_score(monkeypatch, eval_fail):
 
 
 def test_evolve_records_parent_in_provenance(monkeypatch, eval_fail):
-    install_fake_gemini(monkeypatch, evo_mod, EVOLVED_JSON)
+    install_fake_skill_llm(monkeypatch, EVOLVED_JSON)
     parent = make_task_skill()
 
     evolved = evo_mod.SkillEvolver().evolve(parent, "trace", eval_fail)
@@ -51,7 +51,7 @@ def test_evolve_records_parent_in_provenance(monkeypatch, eval_fail):
 
 
 def test_evolve_falls_back_on_bad_json(monkeypatch, eval_fail):
-    install_fake_gemini(monkeypatch, evo_mod, "not json")
+    install_fake_skill_llm(monkeypatch, "not json")
     parent = make_task_skill(score=50.0)
 
     evolved = evo_mod.SkillEvolver().evolve(parent, "trace", eval_fail)

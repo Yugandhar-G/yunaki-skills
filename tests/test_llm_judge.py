@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from tests.conftest import install_fake_gemini
+from tests.conftest import install_fake_skill_llm
 from yunaki_skills import llm_judge as judge_mod
 from yunaki_skills.llm_judge import JudgeScores, LLMJudge, _read_code, _weighted_overall
 
@@ -20,7 +20,7 @@ GOOD_JUDGMENT = json.dumps(
 
 
 def test_judge_parses_scores(monkeypatch):
-    install_fake_gemini(monkeypatch, judge_mod, GOOD_JUDGMENT)
+    install_fake_skill_llm(monkeypatch, GOOD_JUDGMENT)
     result = LLMJudge(persist=False).judge("Implement endpoints", "def f(): pass")
 
     assert result.scores.correctness == 90
@@ -31,7 +31,7 @@ def test_judge_parses_scores(monkeypatch):
 
 
 def test_judge_failure_returns_zero_scores(monkeypatch):
-    install_fake_gemini(monkeypatch, judge_mod, "not json at all")
+    install_fake_skill_llm(monkeypatch, "not json at all")
     result = LLMJudge(persist=False).judge("task", "code")
 
     assert result.overall == 0.0
@@ -40,7 +40,7 @@ def test_judge_failure_returns_zero_scores(monkeypatch):
 
 
 def test_judge_persists_when_collection_present(monkeypatch):
-    fake = install_fake_gemini(monkeypatch, judge_mod, GOOD_JUDGMENT)
+    fake = install_fake_skill_llm(monkeypatch, GOOD_JUDGMENT)
     judge = LLMJudge(persist=False)
     # Wire a fake evaluations collection in after construction.
     from unittest.mock import MagicMock
@@ -48,7 +48,7 @@ def test_judge_persists_when_collection_present(monkeypatch):
     judge._evaluations = MagicMock()
     judge.judge("task", "code")
     judge._evaluations.insert_one.assert_called_once()
-    assert fake.models.generate_content.called
+    assert fake.called
 
 
 def test_weighted_overall():
@@ -69,8 +69,8 @@ def test_read_code_from_raw_string():
 
 
 def test_judge_includes_code_in_prompt(monkeypatch):
-    fake = install_fake_gemini(monkeypatch, judge_mod, GOOD_JUDGMENT)
+    fake = install_fake_skill_llm(monkeypatch, GOOD_JUDGMENT)
     LLMJudge(persist=False).judge("My task", "SECRET_MARKER_CODE")
-    _, kwargs = fake.models.generate_content.call_args
-    assert "SECRET_MARKER_CODE" in kwargs["contents"]
-    assert "My task" in kwargs["contents"]
+    prompt = fake.call_args[0][0]
+    assert "SECRET_MARKER_CODE" in prompt
+    assert "My task" in prompt
