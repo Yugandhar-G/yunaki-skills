@@ -51,11 +51,8 @@ _auth_store = AuthStore()
 # ─── Try importing real modules (subagents may build in parallel) ──────────
 try:
     from yunaki_skills.interfaces import (
-        Granularity,
         Skill,
         TaskResult,
-        TriggerMatchOn,
-        TriggerType,
     )
 
     _real_interfaces = True
