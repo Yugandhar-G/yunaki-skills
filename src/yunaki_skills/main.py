@@ -473,15 +473,18 @@ async def api_ingest_skill(req: IngestRequest):
     """Ingest any skill format (.md, .json, .yaml, .txt) and normalize to Yunaki Skill."""
     try:
         from yunaki_skills.skill_ingestor import SkillIngestor
+
         ingestor = SkillIngestor()
         result = ingestor.ingest(req.content, filename=req.filename, org_id=req.org_id)
         bank = SkillBank()
         bank.add(result.skill)
-        return ok({
-            "skill": result.skill.model_dump(),
-            "format_detected": result.format_detected,
-            "warnings": result.warnings,
-        })
+        return ok(
+            {
+                "skill": result.skill.model_dump(),
+                "format_detected": result.format_detected,
+                "warnings": result.warnings,
+            }
+        )
     except Exception as e:
         logger.exception("skill ingest failed")
         raise HTTPException(status_code=500, detail=f"Ingest failed: {e}")
@@ -492,16 +495,19 @@ async def api_ingest_skill_file(file: UploadFile = File(...), org_id: Optional[s
     """Upload a skill file (.md, .json, .yaml, .txt) and ingest it."""
     try:
         from yunaki_skills.skill_ingestor import SkillIngestor
+
         content = (await file.read()).decode("utf-8")
         ingestor = SkillIngestor()
         result = ingestor.ingest(content, filename=file.filename or "skill.txt", org_id=org_id)
         bank = SkillBank()
         bank.add(result.skill)
-        return ok({
-            "skill": result.skill.model_dump(),
-            "format_detected": result.format_detected,
-            "warnings": result.warnings,
-        })
+        return ok(
+            {
+                "skill": result.skill.model_dump(),
+                "format_detected": result.format_detected,
+                "warnings": result.warnings,
+            }
+        )
     except Exception as e:
         logger.exception("skill file ingest failed")
         raise HTTPException(status_code=500, detail=f"Ingest failed: {e}")

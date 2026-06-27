@@ -185,12 +185,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_evolve.add_argument("skill_id", help="ID of the skill to evolve")
     p_evolve.set_defaults(func=_cmd_skills_evolve)
 
-    p_consolidate = skills_sub.add_parser(
-        "consolidate", help="Merge near-duplicate skills and drop ineffective ones"
-    )
-    p_consolidate.add_argument(
-        "--apply", action="store_true", help="Actually mutate the bank (default: dry-run)"
-    )
+    p_consolidate = skills_sub.add_parser("consolidate", help="Merge near-duplicate skills and drop ineffective ones")
+    p_consolidate.add_argument("--apply", action="store_true", help="Actually mutate the bank (default: dry-run)")
     p_consolidate.set_defaults(func=_cmd_skills_consolidate)
 
     p_doctor = sub.add_parser("doctor", help="Show which coding-agent backend is detected")

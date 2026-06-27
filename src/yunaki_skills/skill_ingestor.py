@@ -255,8 +255,8 @@ class SkillIngestor(SkillIngestor):
             return None
         prompt = (
             "Extract a reusable coding skill from the text below. Respond with ONLY "
-            "a JSON object: {\"title\": str, \"when_to_apply\": str, "
-            "\"instructions\": [str, ...], \"query\": str}. instructions must be "
+            'a JSON object: {"title": str, "when_to_apply": str, '
+            '"instructions": [str, ...], "query": str}. instructions must be '
             "2-10 concrete, actionable steps.\n\nTEXT:\n" + content[:6000]
         )
         try:

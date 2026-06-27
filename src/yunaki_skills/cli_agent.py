@@ -160,9 +160,4 @@ class CliAgentAdapter(AgentClient):
     def _trace(self, body: str, stderr: str) -> str:
         body = body[:_MAX_TRACE_CHARS]
         stderr = stderr[:_MAX_STDERR_CHARS]
-        return (
-            f"=== AGENT (backend={self._spec.name}) ===\n"
-            f"{body}\n"
-            f"=== STDERR ===\n"
-            f"{stderr}\n"
-        )
+        return f"=== AGENT (backend={self._spec.name}) ===\n{body}\n=== STDERR ===\n{stderr}\n"

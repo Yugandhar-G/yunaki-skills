@@ -53,12 +53,8 @@ class ContrastiveRunner:
             shutil.rmtree(workspace, ignore_errors=True)
             shutil.copytree(snapshot_dir, workspace)
             try:
-                trace = self._agent.run_task(
-                    task_description=task_description, skills=skills, repo_path=workspace
-                )
-                ev = self._scorer.evaluate(
-                    task_description, test_command=test_command, workspace=workspace
-                )
+                trace = self._agent.run_task(task_description=task_description, skills=skills, repo_path=workspace)
+                ev = self._scorer.evaluate(task_description, test_command=test_command, workspace=workspace)
                 rollouts.append((trace, ev))
             except Exception as e:
                 logger.warning("Contrastive rollout %d failed: %s", i, e)
@@ -73,9 +69,7 @@ class ContrastiveRunner:
 
         best_pass = max(passes, key=lambda x: x[1].score)
         worst_fail = min(fails, key=lambda x: x[1].score)
-        logger.info(
-            "Contrastive pair: pass=%.0f vs fail=%.0f", best_pass[1].score, worst_fail[1].score
-        )
+        logger.info("Contrastive pair: pass=%.0f vs fail=%.0f", best_pass[1].score, worst_fail[1].score)
         return self._extractor.extract_contrastive(
             task_description,
             pass_trace=best_pass[0],
