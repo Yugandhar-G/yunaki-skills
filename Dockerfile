@@ -9,23 +9,23 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# System deps kept minimal. curl is handy for debugging health from inside the
-# container; the compose healthcheck itself uses Python (no curl dependency).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies first for better layer caching.
+# Install Python dependencies first for better layer caching. Deps are kept
+# light on purpose (no torch/sentence-transformers/numpy) so the build stays
+# small and fast; the app falls back to deterministic hash embeddings when the
+# optional embeddings extra isn't installed.
 COPY requirements.txt ./
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
+
+# Seed skills are loaded at runtime by main.py, so they must be in the image.
+# Copy them before installing the package so the layer is in place.
+COPY skills/ ./skills/
 
 # Project metadata + source. Installed editable so `yunaki_skills` is importable
 # from the configured src/ layout (see pyproject.toml).
 COPY pyproject.toml ./
 COPY src/ ./src/
 COPY dashboard/ ./dashboard/
-COPY skills/ ./skills/
 RUN pip install -e .
 
 EXPOSE 8000

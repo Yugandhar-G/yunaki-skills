@@ -2,11 +2,11 @@
 
 import hashlib
 import logging
+import math
 import re
 from datetime import datetime, timezone
 from typing import Optional
 
-import numpy as np
 from pymongo import MongoClient
 
 from yunaki_skills import governance
@@ -82,15 +82,15 @@ class SkillBank(SkillBank):
         Cheap, dependency-free, and good enough for token-overlap similarity
         across a small skill bank. Normalized so cosine similarity is stable.
         """
-        vec = np.zeros(_EMBED_DIM, dtype=np.float64)
+        vec = [0.0] * _EMBED_DIM
         tokens = re.findall(r"[a-z0-9]+", text.lower())
         for tok in tokens:
             h = int(hashlib.md5(tok.encode()).hexdigest(), 16)
             vec[h % _EMBED_DIM] += 1.0
-        norm = np.linalg.norm(vec)
+        norm = math.sqrt(sum(x * x for x in vec))
         if norm > 0:
-            vec /= norm
-        return vec.tolist()
+            vec = [x / norm for x in vec]
+        return vec
 
     # ── helpers ──────────────────────────────────────────────────────────
 
@@ -150,8 +150,11 @@ class SkillBank(SkillBank):
             logger.warning("Encoder.encode failed (%s) — using hash embedding", e)
             return self._hash_embedding(text)
 
-    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10))
+    def _cosine_similarity(self, a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(y * y for y in b))
+        return dot / (norm_a * norm_b + 1e-10)
 
     # ── public API ───────────────────────────────────────────────────────
 
@@ -249,7 +252,7 @@ class SkillBank(SkillBank):
         be the MiniLM model or the deterministic hash fallback depending on the
         environment, and the two spaces are not comparable.
         """
-        query_vec = np.array(self._compute_embedding(query))
+        query_vec = self._compute_embedding(query)
 
         # Only retrievable (approved/active) skills in this namespace.
         docs = list(self._skills.find(self._retrieval_filter()))
@@ -260,7 +263,7 @@ class SkillBank(SkillBank):
         for doc in docs:
             skill = self._doc_to_skill(doc)
             embed_text = f"{skill.title} {skill.when_to_apply} {skill.trigger.query}"
-            corpus_vec = np.array(self._compute_embedding(embed_text))
+            corpus_vec = self._compute_embedding(embed_text)
             sim = self._cosine_similarity(query_vec, corpus_vec)
             scored.append((sim, skill))
 

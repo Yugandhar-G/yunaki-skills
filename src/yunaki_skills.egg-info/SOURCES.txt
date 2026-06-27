@@ -21,7 +21,6 @@ src/yunaki_skills/skill_evolver.py
 src/yunaki_skills/skill_extractor.py
 src/yunaki_skills/skill_retriever.py
 src/yunaki_skills/task_runner.py
-src/yunaki_skills/ws_manager.py
 src/yunaki_skills.egg-info/PKG-INFO
 src/yunaki_skills.egg-info/SOURCES.txt
 src/yunaki_skills.egg-info/dependency_links.txt
@@ -29,10 +28,12 @@ src/yunaki_skills.egg-info/entry_points.txt
 src/yunaki_skills.egg-info/requires.txt
 src/yunaki_skills.egg-info/top_level.txt
 tests/test_antigravity_client.py
+tests/test_api.py
 tests/test_cli.py
 tests/test_config.py
 tests/test_do_client.py
 tests/test_eval_scorer.py
+tests/test_live_runs.py
 tests/test_llm_judge.py
 tests/test_skill_bank.py
 tests/test_skill_evolver.py
