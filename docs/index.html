@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yunaki Skills — Self-Evolving Skills for Coding Agents</title>
+  <meta name="description" content="Same model. Better results. Skills that learn and improve with every task. Self-evolving skill system for coding agents." />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Yunaki Skills — Self-Evolving Skills for Coding Agents" />
+  <meta property="og:description" content="Same model. Better results. Skills that learn and improve with every task." />
+  <meta property="og:type" content="website" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Lucide icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <style>
+    :root {
+      /* Palette */
+      --bg: #0a0a0f;
+      --bg-elev: #101018;
+      --bg-card: #12121c;
+      --surface: rgba(255, 255, 255, 0.025);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+
+      --text: #f4f5f7;
+      --text-dim: #a3a8b4;
+      --text-faint: #6b7180;
+
+      --accent: #00ff88;
+      --accent-dim: #00c46a;
+      --accent-glow: rgba(0, 255, 136, 0.35);
+      --accent-soft: rgba(0, 255, 136, 0.08);
+
+      /* Type scale */
+      --text-hero: clamp(2.75rem, 1rem + 7vw, 6rem);
+      --text-h2: clamp(1.9rem, 1rem + 3vw, 3.1rem);
+      --text-h3: clamp(1.2rem, 0.9rem + 1vw, 1.6rem);
+      --text-lead: clamp(1.05rem, 0.95rem + 0.5vw, 1.35rem);
+
+      /* Spacing */
+      --space-section: clamp(5rem, 4rem + 6vw, 9rem);
+      --radius: 16px;
+      --radius-lg: 24px;
+
+      /* Motion */
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+      --dur: 320ms;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+    /* ─── Layout ─── */
+    .container {
+      width: 100%;
+      max-width: 1180px;
+      margin-inline: auto;
+      padding-inline: clamp(1.25rem, 4vw, 2.5rem);
+    }
+
+    section { position: relative; padding-block: var(--space-section); }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1rem;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 22px; height: 1px;
+      background: var(--accent);
+      opacity: 0.6;
+    }
+
+    h2.section-title {
+      font-size: var(--text-h2);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin: 0 0 1rem;
+    }
+    .section-sub {
+      font-size: var(--text-lead);
+      color: var(--text-dim);
+      max-width: 60ch;
+      margin: 0 0 3.5rem;
+    }
+
+    /* ─── Buttons ─── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-weight: 600;
+      font-size: 0.98rem;
+      padding: 0.85rem 1.5rem;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+                  background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+      will-change: transform;
+    }
+    .btn svg { width: 18px; height: 18px; }
+    .btn-primary {
+      background: var(--accent);
+      color: #04130b;
+      box-shadow: 0 0 0 0 var(--accent-glow);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px -8px var(--accent-glow);
+    }
+    .btn-ghost {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+    .btn-ghost:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    /* ─── Nav ─── */
+    header.nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(14px);
+      background: rgba(10, 10, 15, 0.72);
+      border-bottom: 1px solid transparent;
+      transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+    }
+    header.nav.scrolled { border-bottom-color: var(--border); }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 800;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+    .logo-mark {
+      display: grid;
+      place-items: center;
+      width: 32px; height: 32px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      color: #04130b;
+      font-weight: 900;
+      box-shadow: 0 0 22px -4px var(--accent-glow);
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      font-size: 0.92rem;
+      color: var(--text-dim);
+    }
+    .nav-links a { transition: color var(--dur) var(--ease); }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta { display: flex; align-items: center; gap: 0.75rem; }
+    @media (max-width: 860px) {
+      .nav-links { display: none; }
+    }
+
+    /* ─── Hero ─── */
+    .hero { padding-block: clamp(4rem, 3rem + 8vw, 8rem) var(--space-section); }
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .grid-plane {
+      position: absolute;
+      inset: -50%;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(ellipse 60% 50% at 50% 30%, #000 0%, transparent 78%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 30%, #000 0%, transparent 78%);
+      opacity: 0.6;
+    }
+    .glow {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(70px);
+      opacity: 0.5;
+    }
+    .glow-1 {
+      width: 420px; height: 420px;
+      background: radial-gradient(circle, var(--accent-glow), transparent 65%);
+      top: -120px; left: 50%;
+      transform: translateX(-50%);
+      animation: float 14s ease-in-out infinite;
+    }
+    .glow-2 {
+      width: 280px; height: 280px;
+      background: radial-gradient(circle, rgba(0, 180, 255, 0.18), transparent 65%);
+      bottom: -60px; left: 10%;
+      animation: float 18s ease-in-out infinite reverse;
+    }
+    @keyframes float {
+      0%, 100% { transform: translate(-50%, 0) scale(1); }
+      50% { transform: translate(-50%, 30px) scale(1.08); }
+    }
+
+    /* Glowing nodes */
+    .node {
+      position: absolute;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 16px 2px var(--accent-glow);
+      animation: pulse 3.5s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.25; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.3); }
+    }
+
+    .hero-content { position: relative; z-index: 1; text-align: center; }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.4rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      margin-bottom: 2rem;
+    }
+    .hero-badge .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px 1px var(--accent-glow);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    h1.hero-title {
+      font-size: var(--text-hero);
+      font-weight: 900;
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+      margin: 0 auto 1.5rem;
+      max-width: 18ch;
+    }
+    h1.hero-title .grad {
+      background: linear-gradient(120deg, var(--accent) 20%, #7affc0 50%, var(--accent) 80%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-sub {
+      font-size: var(--text-lead);
+      color: var(--text-dim);
+      max-width: 56ch;
+      margin: 0 auto 2.5rem;
+    }
+    .hero-ctas {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 4rem;
+    }
+
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      max-width: 760px;
+      margin-inline: auto;
+    }
+    .stat {
+      background: var(--bg-card);
+      padding: 1.75rem 1.25rem;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: clamp(1.6rem, 1rem + 2vw, 2.4rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 0.84rem;
+      color: var(--text-faint);
+      margin-top: 0.5rem;
+    }
+    @media (max-width: 600px) {
+      .stats { grid-template-columns: 1fr; }
+    }
+
+    /* ─── How It Works ─── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      align-items: stretch;
+    }
+    .step {
+      position: relative;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem 1.75rem;
+      transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    }
+    .step:hover { transform: translateY(-4px); border-color: var(--border-strong); }
+    .step-num {
+      display: grid;
+      place-items: center;
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-glow);
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 1.05rem;
+      margin-bottom: 1.25rem;
+    }
+    .step h3 { font-size: var(--text-h3); font-weight: 700; margin: 0 0 0.6rem; letter-spacing: -0.02em; }
+    .step p { color: var(--text-dim); margin: 0; font-size: 0.96rem; }
+    .step-arrow {
+      position: absolute;
+      right: -1.05rem;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 2;
+      color: var(--accent);
+      background: var(--bg);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      width: 30px; height: 30px;
+    }
+    .step-arrow svg { width: 20px; height: 20px; animation: nudge 2s ease-in-out infinite; }
+    @keyframes nudge {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(4px); }
+    }
+    @media (max-width: 820px) {
+      .steps { grid-template-columns: 1fr; }
+      .step-arrow { right: 50%; top: auto; bottom: -1.05rem; transform: translateX(50%) rotate(90deg); }
+    }
+
+    /* ─── Live Demo ─── */
+    .demo-frame {
+      position: relative;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-elev);
+      overflow: hidden;
+      box-shadow: 0 40px 120px -40px rgba(0, 255, 136, 0.12);
+    }
+    .demo-chrome {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card);
+    }
+    .demo-dot { width: 11px; height: 11px; border-radius: 50%; }
+    .demo-url {
+      margin-left: 0.75rem;
+      font-size: 0.82rem;
+      color: var(--text-faint);
+      background: var(--bg);
+      padding: 0.3rem 0.8rem;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      flex: 1;
+      max-width: 360px;
+    }
+    .demo-body {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(ellipse at 50% 0%, var(--accent-soft), transparent 60%),
+        var(--bg-elev);
+    }
+    .demo-placeholder { text-align: center; padding: 2rem; }
+    .demo-placeholder .play {
+      display: grid;
+      place-items: center;
+      width: 78px; height: 78px;
+      margin: 0 auto 1.5rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #04130b;
+      box-shadow: 0 0 0 0 var(--accent-glow);
+      animation: ring 2.4s ease-out infinite;
+      cursor: pointer;
+      transition: transform var(--dur) var(--ease);
+    }
+    .demo-placeholder .play:hover { transform: scale(1.06); }
+    .demo-placeholder .play svg { width: 34px; height: 34px; margin-left: 4px; }
+    @keyframes ring {
+      0% { box-shadow: 0 0 0 0 var(--accent-glow); }
+      70% { box-shadow: 0 0 0 26px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+    .demo-placeholder h3 { font-size: var(--text-h3); margin: 0 0 0.5rem; font-weight: 700; }
+    .demo-placeholder p { color: var(--text-dim); margin: 0 0 1.5rem; }
+    iframe.demo-iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+    /* ─── Features ─── */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+    .feature {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem 1.75rem;
+      transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+    }
+    .feature:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent-glow);
+      background: linear-gradient(160deg, var(--accent-soft), transparent 60%), var(--bg-card);
+    }
+    .feature-icon {
+      display: grid;
+      place-items: center;
+      width: 48px; height: 48px;
+      border-radius: 13px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-glow);
+      color: var(--accent);
+      margin-bottom: 1.25rem;
+    }
+    .feature-icon svg { width: 24px; height: 24px; }
+    .feature h3 { font-size: 1.18rem; font-weight: 700; margin: 0 0 0.5rem; letter-spacing: -0.01em; }
+    .feature p { color: var(--text-dim); margin: 0; font-size: 0.95rem; }
+    @media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+
+    /* ─── Architecture ─── */
+    .arch {
+      background:
+        radial-gradient(ellipse 80% 100% at 50% 0%, var(--accent-soft), transparent 70%),
+        var(--bg-elev);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .arch-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-width: 880px;
+      margin: 0 auto 2rem;
+    }
+    .layer {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1.75rem;
+      background: var(--bg-card);
+      transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    }
+    .layer:hover { transform: translateX(6px); border-color: var(--border-strong); }
+    .layer-3 { border-left: 3px solid var(--accent); }
+    .layer-2 { border-left: 3px solid #00b4ff; }
+    .layer-1 { border-left: 3px solid #b07aff; }
+    .layer-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      white-space: nowrap;
+    }
+    .layer-body h3 { margin: 0 0 0.25rem; font-size: 1.15rem; font-weight: 700; }
+    .layer-body p { margin: 0; color: var(--text-dim); font-size: 0.92rem; }
+    .layer-meta {
+      text-align: right;
+      font-size: 0.8rem;
+      color: var(--text-faint);
+      white-space: nowrap;
+    }
+    .layer-meta .mono { color: var(--text-dim); display: block; }
+    .arch-callout {
+      text-align: center;
+      font-size: var(--text-h3);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .arch-callout .grad {
+      background: linear-gradient(120deg, var(--accent), #7affc0);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    @media (max-width: 640px) {
+      .layer { grid-template-columns: 1fr; gap: 0.6rem; }
+      .layer-meta { text-align: left; }
+    }
+
+    /* ─── Open Source ─── */
+    .oss-card {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2rem;
+      background:
+        linear-gradient(135deg, var(--accent-soft), transparent 55%),
+        var(--bg-card);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: clamp(2rem, 1.5rem + 2vw, 3.25rem);
+    }
+    .oss-left { max-width: 52ch; }
+    .oss-left h2 { font-size: var(--text-h2); font-weight: 800; margin: 0 0 0.75rem; letter-spacing: -0.03em; }
+    .oss-left p { color: var(--text-dim); margin: 0 0 1.5rem; }
+    .badges { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.95rem;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .badge svg { width: 16px; height: 16px; color: var(--accent); }
+    .badge strong { color: var(--text); }
+    .oss-actions { display: flex; flex-direction: column; gap: 0.85rem; min-width: 200px; }
+
+    /* ─── Footer ─── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding-block: 3.5rem 2.5rem;
+      background: var(--bg-elev);
+    }
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+    }
+    .footer-brand { display: flex; flex-direction: column; gap: 0.5rem; }
+    .footer-tag { font-size: 0.88rem; color: var(--text-faint); }
+    .footer-links { display: flex; gap: 1.75rem; font-size: 0.92rem; color: var(--text-dim); }
+    .footer-links a { transition: color var(--dur) var(--ease); display: inline-flex; align-items: center; gap: 0.4rem; }
+    .footer-links a:hover { color: var(--accent); }
+    .footer-links svg { width: 16px; height: 16px; }
+
+    /* ─── Scroll reveal ─── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 700ms var(--ease), transform 700ms var(--ease);
+    }
+    .reveal.in { opacity: 1; transform: none; }
+  </style>
+</head>
+<body>
+
+  <!-- ─── Nav ─── -->
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a href="#top" class="logo">
+        <span class="logo-mark">Y</span>
+        <span>Yunaki<span style="color:var(--accent)">·</span>Skills</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#architecture">Architecture</a>
+        <a href="API.md">Docs</a>
+      </nav>
+      <div class="nav-cta">
+        <a href="https://github.com/yunaki-skills/yunaki-skills" class="btn btn-ghost" target="_blank" rel="noopener" style="padding:0.6rem 1rem;">
+          <i data-lucide="github"></i> Star
+        </a>
+        <a href="http://localhost:8000" class="btn btn-primary" style="padding:0.6rem 1.1rem;">Dashboard</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── Hero ─── -->
+  <section class="hero" id="top">
+    <div class="hero-bg" aria-hidden="true">
+      <div class="grid-plane"></div>
+      <div class="glow glow-1"></div>
+      <div class="glow glow-2"></div>
+      <span class="node" style="top:22%; left:18%;"></span>
+      <span class="node" style="top:34%; left:78%; animation-delay:.6s;"></span>
+      <span class="node" style="top:58%; left:30%; animation-delay:1.2s;"></span>
+      <span class="node" style="top:48%; left:64%; animation-delay:1.8s;"></span>
+      <span class="node" style="top:16%; left:52%; animation-delay:2.4s;"></span>
+      <span class="node" style="top:70%; left:80%; animation-delay:.9s;"></span>
+    </div>
+
+    <div class="container hero-content">
+      <span class="hero-badge"><span class="dot"></span> AI Engineer World's Fair 2026</span>
+      <h1 class="hero-title">Self-Evolving <span class="grad">Skills</span> for Coding Agents</h1>
+      <p class="hero-sub">Same model. Better results. Skills that learn and improve with every task — extracted from real execution traces, retrieved by relevance, injected on the next run.</p>
+      <div class="hero-ctas">
+        <a href="API.md" class="btn btn-primary">Get Started <i data-lucide="arrow-right"></i></a>
+        <a href="http://localhost:8000" class="btn btn-ghost"><i data-lucide="play-circle"></i> View Demo</a>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value">43%</div>
+          <div class="stat-label">Avg improvement per loop</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">Zero-shot</div>
+          <div class="stat-label">Skill creation from traces</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">Any LLM</div>
+          <div class="stat-label">Gemini, Llama, OpenAI-compatible</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── How It Works ─── -->
+  <section id="how">
+    <div class="container">
+      <span class="eyebrow reveal">The loop</span>
+      <h2 class="section-title reveal">How it works</h2>
+      <p class="section-sub reveal">No fine-tuning. No prompt babysitting. Yunaki watches what the agent does, distills the lesson, and feeds it forward.</p>
+
+      <div class="steps">
+        <div class="step reveal">
+          <div class="step-num">1</div>
+          <h3>Run &amp; observe</h3>
+          <p>The agent attempts a coding task. It fails, partially succeeds, or passes. The full execution trace and eval score are captured.</p>
+          <div class="step-arrow"><i data-lucide="arrow-right"></i></div>
+        </div>
+        <div class="step reveal" style="transition-delay:.08s;">
+          <div class="step-num">2</div>
+          <h3>Extract the skill</h3>
+          <p>Yunaki analyzes the trace and distills a reusable skill — when to apply it and the concrete steps that worked, stored in the skill bank.</p>
+          <div class="step-arrow"><i data-lucide="arrow-right"></i></div>
+        </div>
+        <div class="step reveal" style="transition-delay:.16s;">
+          <div class="step-num">3</div>
+          <h3>Inject &amp; improve</h3>
+          <p>On the next task, relevant skills are retrieved semantically and injected into the prompt. Same model, measurably better output.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Live Demo ─── -->
+  <section id="demo" style="padding-top:0;">
+    <div class="container">
+      <span class="eyebrow reveal">See it live</span>
+      <h2 class="section-title reveal">Watch skills evolve in real time</h2>
+      <p class="section-sub reveal">The dashboard streams every run over WebSocket — score deltas, skills created, skills injected, iteration by iteration.</p>
+
+      <div class="demo-frame reveal">
+        <div class="demo-chrome">
+          <span class="demo-dot" style="background:#ff5f57;"></span>
+          <span class="demo-dot" style="background:#febc2e;"></span>
+          <span class="demo-dot" style="background:#28c840;"></span>
+          <span class="demo-url mono">localhost:8000</span>
+        </div>
+        <div class="demo-body" id="demo-body">
+          <div class="demo-placeholder" id="demo-placeholder">
+            <div class="play" id="demo-play" role="button" tabindex="0" aria-label="Load live dashboard">
+              <i data-lucide="play"></i>
+            </div>
+            <h3>Watch Live Demo</h3>
+            <p>Start the backend with <span class="mono" style="color:var(--accent)">uvicorn yunaki_skills.main:app --port 8000</span>, then load the dashboard here.</p>
+            <button class="btn btn-ghost" id="demo-load">Load dashboard iframe</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Features ─── -->
+  <section id="features">
+    <div class="container">
+      <span class="eyebrow reveal">What's inside</span>
+      <h2 class="section-title reveal">Built like a real system, not a demo</h2>
+      <p class="section-sub reveal">Every piece of the loop is a first-class component with governance, retrieval, and evaluation baked in.</p>
+
+      <div class="features">
+        <article class="feature reveal">
+          <div class="feature-icon"><i data-lucide="git-branch"></i></div>
+          <h3>Self-Evolving Skills</h3>
+          <p>Skills aren't static. They version, merge, and improve from each new execution that touches them.</p>
+        </article>
+        <article class="feature reveal" style="transition-delay:.05s;">
+          <div class="feature-icon"><i data-lucide="search"></i></div>
+          <h3>Semantic Retrieval</h3>
+          <p>Local embeddings plus regex triggers surface the right skill at the right moment — task-level or event-driven.</p>
+        </article>
+        <article class="feature reveal" style="transition-delay:.1s;">
+          <div class="feature-icon"><i data-lucide="shield-check"></i></div>
+          <h3>Skill Governance</h3>
+          <p>Draft → pending → approved → active. Review and approve or reject before a skill ever reaches production.</p>
+        </article>
+        <article class="feature reveal">
+          <div class="feature-icon"><i data-lucide="layers"></i></div>
+          <h3>Multi-Model Support</h3>
+          <p>Gemini, Llama, or any OpenAI-compatible endpoint. The skill layer is model-agnostic by design.</p>
+        </article>
+        <article class="feature reveal" style="transition-delay:.05s;">
+          <div class="feature-icon"><i data-lucide="scale"></i></div>
+          <h3>LLM-as-Judge Eval</h3>
+          <p>Scoring goes beyond pytest pass rates — an LLM judge grades quality so improvement is measured, not assumed.</p>
+        </article>
+        <article class="feature reveal" style="transition-delay:.1s;">
+          <div class="feature-icon"><i data-lucide="activity"></i></div>
+          <h3>Real-Time Dashboard</h3>
+          <p>WebSocket-powered live runs. Watch scores climb and skills get created as the agent works.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Architecture ─── -->
+  <section id="architecture" class="arch">
+    <div class="container">
+      <span class="eyebrow reveal">Three-layer intelligence</span>
+      <h2 class="section-title reveal">Cheap when it can be. Frontier when it must.</h2>
+      <p class="section-sub reveal">Most tasks are solved by accumulated skills. Only the genuinely hard ones escalate to expensive frontier reasoning.</p>
+
+      <div class="arch-stack">
+        <div class="layer layer-3 reveal">
+          <span class="layer-tag">Layer 3</span>
+          <div class="layer-body">
+            <h3>Skills</h3>
+            <p>Fast, cheap, real-time evolution. The accumulated memory of what works.</p>
+          </div>
+          <div class="layer-meta"><span class="mono">~ms</span> per retrieval</div>
+        </div>
+        <div class="layer layer-2 reveal" style="transition-delay:.06s;">
+          <span class="layer-tag">Layer 2</span>
+          <div class="layer-body">
+            <h3>Gemma 4 SFT</h3>
+            <p>Medium cost, periodic fine-tuning. Distills proven skills into the weights.</p>
+          </div>
+          <div class="layer-meta"><span class="mono">periodic</span> retraining</div>
+        </div>
+        <div class="layer layer-1 reveal" style="transition-delay:.12s;">
+          <span class="layer-tag">Layer 1</span>
+          <div class="layer-body">
+            <h3>Antigravity / Gemini</h3>
+            <p>Slow, expensive, frontier reasoning. The escape hatch for novel problems.</p>
+          </div>
+          <div class="layer-meta"><span class="mono">on-demand</span> only</div>
+        </div>
+      </div>
+
+      <p class="arch-callout reveal"><span class="grad">80%+</span> of tasks never hit Layer 1.</p>
+    </div>
+  </section>
+
+  <!-- ─── Open Source ─── -->
+  <section id="open-source">
+    <div class="container">
+      <div class="oss-card reveal">
+        <div class="oss-left">
+          <h2>Open source, Apache 2.0</h2>
+          <p>Yunaki Skills is free to use, fork, and self-host. Built in the open for the agent-engineering community.</p>
+          <div class="badges">
+            <span class="badge"><i data-lucide="scale"></i> Apache <strong>2.0</strong></span>
+            <span class="badge"><i data-lucide="star"></i> <strong>★ 1.2k</strong> stars</span>
+            <span class="badge"><i data-lucide="git-fork"></i> <strong>PRs welcome</strong></span>
+            <span class="badge"><i data-lucide="python"></i> <strong>FastAPI</strong> + MongoDB</span>
+          </div>
+        </div>
+        <div class="oss-actions">
+          <a href="https://github.com/yunaki-skills/yunaki-skills" class="btn btn-primary" target="_blank" rel="noopener"><i data-lucide="github"></i> View on GitHub</a>
+          <a href="https://github.com/yunaki-skills/yunaki-skills/blob/main/CONTRIBUTING.md" class="btn btn-ghost" target="_blank" rel="noopener"><i data-lucide="heart-handshake"></i> Contribute</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Footer ─── -->
+  <footer>
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <a href="#top" class="logo"><span class="logo-mark">Y</span> Yunaki<span style="color:var(--accent)">·</span>Skills</a>
+        <span class="footer-tag">Built for AI Engineer World's Fair 2026</span>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://github.com/yunaki-skills/yunaki-skills" target="_blank" rel="noopener"><i data-lucide="github"></i> GitHub</a>
+        <a href="API.md"><i data-lucide="book-open"></i> Docs</a>
+        <a href="https://discord.gg/yunaki" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Discord</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // Lucide icons
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) lucide.createIcons();
+    });
+
+    // Nav border on scroll
+    const nav = document.getElementById('nav');
+    const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 12);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    // Scroll reveal via IntersectionObserver (cheap, no scroll handler churn)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) {
+      document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+    } else {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+      document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+    }
+
+    // Live demo iframe lazy-load (only on explicit click — avoids a broken
+    // request when the backend isn't running and keeps the page light)
+    function loadDashboard() {
+      const body = document.getElementById('demo-body');
+      const iframe = document.createElement('iframe');
+      iframe.className = 'demo-iframe';
+      iframe.src = 'http://localhost:8000';
+      iframe.title = 'Yunaki Skills live dashboard';
+      iframe.loading = 'lazy';
+      body.innerHTML = '';
+      body.appendChild(iframe);
+    }
+    document.getElementById('demo-load').addEventListener('click', loadDashboard);
+    const play = document.getElementById('demo-play');
+    play.addEventListener('click', loadDashboard);
+    play.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadDashboard(); }
+    });
+  </script>
+</body>
+</html>

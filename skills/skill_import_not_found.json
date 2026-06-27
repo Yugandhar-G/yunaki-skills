@@ -1,0 +1,29 @@
+{
+  "id": "skill_import_not_found",
+  "title": "Fix Module Not Found Error",
+  "granularity": "event-driven",
+  "version": "0.1",
+  "score": 50.0,
+  "trigger": {
+    "type": "pattern",
+    "patterns": ["ModuleNotFoundError.*", "ImportError.*", "No module named.*"],
+    "query": "",
+    "match_on": "error"
+  },
+  "when_to_apply": "When the agent encounters a ModuleNotFoundError or ImportError during execution",
+  "instructions": [
+    "Check if the module is installed — run pip list | grep <module_name>",
+    "If missing, install it: pip install <module_name>",
+    "If it's a local module, check the import path matches the file structure",
+    "Verify __init__.py exists in the package directory",
+    "Check for circular imports — move shared imports into function scope if needed"
+  ],
+  "provenance": {
+    "created_from": "seed",
+    "task": "initial seed skill",
+    "iteration": 0,
+    "parent_skill": null,
+    "merged_from": [],
+    "evolved_at": "2026-06-27T12:00:00Z"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "skill_dep_injection",
+  "title": "FastAPI Dependency Injection Pattern",
+  "granularity": "task-level",
+  "version": "0.1",
+  "score": 50.0,
+  "trigger": {
+    "type": "semantic",
+    "patterns": [],
+    "query": "FastAPI endpoint dependency injection database session",
+    "match_on": "task_description"
+  },
+  "when_to_apply": "When adding or modifying FastAPI endpoints that need database access or shared services",
+  "instructions": [
+    "Always use Depends() for injecting database sessions and services",
+    "Use the Repository pattern — put data access in /repositories/ directory",
+    "Define Pydantic schemas in /schemas/ directory for request/response validation",
+    "Import the get_db dependency from the existing database module",
+    "Follow the naming convention: router prefix matches the resource name"
+  ],
+  "provenance": {
+    "created_from": "seed",
+    "task": "initial seed skill",
+    "iteration": 0,
+    "parent_skill": null,
+    "merged_from": [],
+    "evolved_at": "2026-06-27T12:00:00Z"
+  }
+}

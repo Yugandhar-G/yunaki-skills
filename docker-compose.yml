@@ -1,0 +1,84 @@
+# Yunaki Skills — local/production stack.
+#   yunaki-app : FastAPI backend + dashboard (port 8000)
+#   mongodb    : skill bank + users/repos/runs (port 27017, persistent volume)
+#   redis      : skill-embedding cache (port 6379)
+#
+# Secrets (GEMINI_API_KEY, etc.) are read from the .env file via `env_file`.
+# Service-to-service URIs are set explicitly here and override any values in
+# .env so the app talks to the compose-networked containers, not localhost.
+
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - yunaki
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - yunaki
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  yunaki-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Point at the compose-networked services, not localhost.
+      MONGODB_URI: "mongodb://mongodb:27017/yunaki"
+      MONGO_DB: "yunaki"
+      REDIS_URL: "redis://redis:6379/0"
+      # Auth is enforced in the containerized (production-like) deployment.
+      AUTH_ENABLED: "true"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - yunaki
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status==200 else sys.exit(1)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  yunaki:
+    driver: bridge

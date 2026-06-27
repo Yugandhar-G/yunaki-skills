@@ -1,0 +1,29 @@
+{
+  "id": "skill_error_handling",
+  "title": "HTTP Error Handling Pattern",
+  "granularity": "task-level",
+  "version": "0.1",
+  "score": 50.0,
+  "trigger": {
+    "type": "semantic",
+    "patterns": [],
+    "query": "error handling HTTP exceptions FastAPI endpoint",
+    "match_on": "task_description"
+  },
+  "when_to_apply": "When implementing endpoints that need proper error responses for missing resources or validation failures",
+  "instructions": [
+    "Use HTTPException from fastapi for error responses",
+    "Return 404 when a resource is not found in the database",
+    "Return 422 for validation errors with detail message",
+    "Include a consistent error response format: {detail: str, status_code: int}",
+    "Handle database errors gracefully with try/except blocks"
+  ],
+  "provenance": {
+    "created_from": "seed",
+    "task": "initial seed skill",
+    "iteration": 0,
+    "parent_skill": null,
+    "merged_from": [],
+    "evolved_at": "2026-06-27T12:00:00Z"
+  }
+}
