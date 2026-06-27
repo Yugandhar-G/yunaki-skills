@@ -105,5 +105,5 @@ def test_run_pytest_timeout(monkeypatch):
         raise subprocess.TimeoutExpired(cmd="pytest", timeout=120)
 
     monkeypatch.setattr(es_mod.subprocess, "run", _raise)
-    out = EvalScorer()._run_pytest("/fake/repo")
+    out = EvalScorer()._run_tests("/fake/repo", ["pytest", "--timeout=5"])
     assert "timed out" in out

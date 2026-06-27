@@ -2,14 +2,20 @@
 EvalScorer — test-based evaluation.
 
 Implements the EvalScorer interface from yunaki_skills.interfaces.
-Strategy: run pytest on the target repo and count pass/fail.
-Also performs a basic Python syntax/import check.
+
+Universal: not tied to a fixed repo. The caller supplies inline code (a string)
+and/or a prepared workspace directory, plus a test command. The scorer
+materializes the code into a workspace, runs a basic syntax check, runs the test
+command, and counts pass/fail.
 """
 
 import logging
 import os
 import re
+import shutil
 import subprocess
+import tempfile
+from typing import Optional
 
 from yunaki_skills.interfaces import EvalResult
 from yunaki_skills.interfaces import EvalScorer as IEvalScorer
@@ -19,6 +25,15 @@ logger = logging.getLogger(__name__)
 # Score (%) at or above which a task counts as passed. Configurable so a demo
 # can require full completion (100) instead of the default partial-credit bar.
 _DEFAULT_PASS_THRESHOLD = 80.0
+
+# Default test command when the caller does not supply one.
+_DEFAULT_TEST_COMMAND = ["python3", "-m", "pytest", "-v", "--tb=short"]
+
+# Filename used when materializing a single inline code snapshot.
+_SNAPSHOT_FILENAME = "solution.py"
+
+_SYNTAX_TIMEOUT_S = 30
+_TEST_TIMEOUT_S = 120
 
 
 def _pass_threshold() -> float:
@@ -33,65 +48,104 @@ def _pass_threshold() -> float:
 
 
 class EvalScorer(IEvalScorer):
-    """Scores agent output by running pytest against the target repo."""
+    """Scores agent output by running a test command against inline code."""
 
-    def evaluate(self, task_description: str, repo_path: str) -> EvalResult:
-        """Run tests + syntax check against the target repo. Return score."""
-        # Step 1: Basic syntax/import check
-        syntax_ok = self._syntax_check(repo_path)
-        if not syntax_ok:
-            logger.warning("Syntax check failed for %s", repo_path)
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                details="Syntax/import check failed — app.py has errors",
-                test_output="",
-                tasks_passed=0,
-                tasks_total=0,
-            )
+    def evaluate(
+        self,
+        task_description: str,
+        code_snapshot: str = "",
+        test_command: Optional[list[str]] = None,
+        workspace: Optional[str] = None,
+    ) -> EvalResult:
+        """Run a syntax check + test command against the code/workspace.
 
-        # Step 2: Run pytest
-        test_output = self._run_pytest(repo_path)
-        logger.info("pytest output (first 500 chars):\n%s", test_output[:500])
+        Resolution order for where to run:
+          1. `workspace` — an existing directory (used as-is, not cleaned up).
+          2. otherwise a fresh temp dir into which `code_snapshot` is written.
+        """
+        workdir, cleanup = self._resolve_workspace(code_snapshot, workspace)
+        command = test_command or _DEFAULT_TEST_COMMAND
+        try:
+            # Step 1: Basic syntax check on the workspace's Python files.
+            if not self._syntax_check(workdir):
+                logger.warning("Syntax check failed in %s", workdir)
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    details="Syntax check failed — code has errors",
+                    test_output="",
+                    tasks_passed=0,
+                    tasks_total=0,
+                )
 
-        # Step 3: Parse results
-        passed, total = self._parse_pytest_output(test_output)
+            # Step 2: Run the test command.
+            test_output = self._run_tests(workdir, command)
+            logger.info("test output (first 500 chars):\n%s", test_output[:500])
 
-        if total == 0:
-            logger.warning("No tests found in pytest output")
-            return EvalResult(
-                passed=False,
-                score=0.0,
-                details="No tests found",
+            # Step 3: Parse results.
+            passed, total = self._parse_pytest_output(test_output)
+            if total == 0:
+                logger.warning("No tests found in test output")
+                return EvalResult(
+                    passed=False,
+                    score=0.0,
+                    details="No tests found",
+                    test_output=test_output[:2000],
+                    tasks_passed=0,
+                    tasks_total=0,
+                )
+
+            score = (passed / total) * 100
+            result = EvalResult(
+                passed=(score >= _pass_threshold()),
+                score=score,
+                details=f"{passed}/{total} tests passed ({score:.0f}%)",
                 test_output=test_output[:2000],
-                tasks_passed=0,
-                tasks_total=0,
+                tasks_passed=passed,
+                tasks_total=total,
             )
+            logger.info("EvalResult: score=%.1f passed=%s", score, result.passed)
+            return result
+        finally:
+            cleanup()
 
-        score = (passed / total) * 100
-        details = f"{passed}/{total} tests passed ({score:.0f}%)"
+    # ── workspace materialization ────────────────────────────────────────
 
-        result = EvalResult(
-            passed=(score >= _pass_threshold()),
-            score=score,
-            details=details,
-            test_output=test_output[:2000],
-            tasks_passed=passed,
-            tasks_total=total,
-        )
-        logger.info("EvalResult: score=%.1f passed=%s", score, result.passed)
-        return result
+    def _resolve_workspace(self, code_snapshot: str, workspace: Optional[str]):
+        """Return (workdir, cleanup_callable).
 
-    def _syntax_check(self, repo_path: str) -> bool:
-        """Run `python -c "import app"` in the repo dir to check syntax."""
+        A caller-provided workspace is used as-is and never deleted. An inline
+        snapshot is written into a temp dir that is removed afterward.
+        """
+        if workspace:
+            return workspace, lambda: None
+
+        tmp = tempfile.mkdtemp(prefix="yunaki_eval_")
+        if code_snapshot:
+            with open(os.path.join(tmp, _SNAPSHOT_FILENAME), "w") as f:
+                f.write(code_snapshot)
+
+        def _cleanup() -> None:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        return tmp, _cleanup
+
+    # ── subprocess steps ─────────────────────────────────────────────────
+
+    def _syntax_check(self, workdir: str) -> bool:
+        """Compile every Python file in the workspace to catch syntax errors.
+
+        Generic across projects (no `import app` assumption). An empty/no-Python
+        workspace compiles cleanly (returncode 0).
+        """
         try:
             result = subprocess.run(
-                ["python3", "-c", "import app"],
+                ["python3", "-m", "compileall", "-q", workdir],
                 capture_output=True,
                 text=True,
-                cwd=repo_path,
-                timeout=30,
-                env={**os.environ, "PYTHONPATH": repo_path},
+                cwd=workdir,
+                timeout=_SYNTAX_TIMEOUT_S,
+                env={**os.environ, "PYTHONPATH": workdir},
             )
             if result.returncode != 0:
                 logger.warning("Syntax check stderr: %s", result.stderr)
@@ -100,24 +154,23 @@ class EvalScorer(IEvalScorer):
             logger.error("Syntax check exception: %s", e)
             return False
 
-    def _run_pytest(self, repo_path: str) -> str:
-        """Run pytest and return the combined stdout+stderr output."""
+    def _run_tests(self, workdir: str, command: list[str]) -> str:
+        """Run the test command in the workspace; return combined stdout+stderr."""
         try:
             result = subprocess.run(
-                ["python3", "-m", "pytest", "test_app.py", "-v", "--tb=short"],
+                command,
                 capture_output=True,
                 text=True,
-                cwd=repo_path,
-                timeout=120,
-                env={**os.environ, "PYTHONPATH": repo_path},
+                cwd=workdir,
+                timeout=_TEST_TIMEOUT_S,
+                env={**os.environ, "PYTHONPATH": workdir},
             )
-            output = result.stdout + "\n" + result.stderr
-            return output
+            return result.stdout + "\n" + result.stderr
         except subprocess.TimeoutExpired:
-            logger.error("pytest timed out")
-            return "ERROR: pytest timed out after 120s"
+            logger.error("test command timed out")
+            return f"ERROR: test command timed out after {_TEST_TIMEOUT_S}s"
         except Exception as e:
-            logger.error("pytest exception: %s", e)
+            logger.error("test command exception: %s", e)
             return f"ERROR: {e}"
 
     def _parse_pytest_output(self, output: str) -> tuple[int, int]:

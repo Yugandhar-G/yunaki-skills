@@ -78,11 +78,11 @@ async def execute_run(
     list_skills: Callable[[], list[dict[str, Any]]],
     add_run: Callable[[dict[str, Any]], None],
     task_runner_cls: Optional[type] = None,
-    repo_id: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute one run, emitting live events. Returns the final run record.
 
-    `repo_id` namespaces the skill bank for multi-repo isolation (None = global).
+    `org_id` namespaces the skill bank for org-level isolation (None = global).
     """
     await broker.publish(
         run_id,
@@ -98,7 +98,7 @@ async def execute_run(
                 broker=broker,
                 list_skills=list_skills,
                 task_runner_cls=task_runner_cls,
-                repo_id=repo_id,
+                org_id=org_id,
             )
         else:
             record = await _run_stub(
@@ -127,7 +127,7 @@ async def _run_real(
     broker: RunEventBroker,
     list_skills: Callable[[], list[dict[str, Any]]],
     task_runner_cls: type,
-    repo_id: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> dict[str, Any]:
     title_for = _title_lookup(list_skills())
 
@@ -143,10 +143,10 @@ async def _run_real(
     )
 
     # The concrete TaskRunner is synchronous and self-persists its run record.
-    # Run it off the event loop so streaming stays responsive. repo_id scopes
-    # the skill bank to the registered repo's namespace.
-    runner = task_runner_cls(repo_id=repo_id)
-    result = await asyncio.to_thread(runner.run, task, max_iterations)
+    # Run it off the event loop so streaming stays responsive. org_id scopes
+    # the skill bank to the org's namespace.
+    runner = task_runner_cls(org_id=org_id)
+    result = await asyncio.to_thread(lambda: runner.run(task, max_iterations=max_iterations))
     record = result.model_dump()
     record["timestamp"] = datetime.utcnow().isoformat()
     record["status"] = "completed"

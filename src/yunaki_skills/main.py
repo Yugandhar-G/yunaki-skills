@@ -14,8 +14,11 @@ from uuid import uuid4
 from fastapi import (
     Depends,
     FastAPI,
+    File,
+    Form,
     HTTPException,
     Request,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -26,7 +29,6 @@ from pydantic import BaseModel
 
 from yunaki_skills.api_models import (
     RegisterRequest,
-    RepoCreateRequest,
     VerifyResponse,
     ok,
 )
@@ -143,16 +145,22 @@ def _seed_mongodb():
 
 
 def _normalize_status(skill: Optional[dict]) -> Optional[dict]:
-    """Ensure every skill exposes a governance status for the dashboard.
+    """Ensure every skill exposes governance + sharing fields for the dashboard.
 
-    The canonical Skill schema has no status field; we treat a missing status
-    as 'active' (seeded/approved). Returns a new dict — never mutates input.
+    Legacy/seed docs predate `status` and `visibility`; we default a missing
+    status to 'active' and a missing visibility to 'private'. Returns a new dict
+    — never mutates input.
     """
     if skill is None:
         return None
-    if skill.get("status"):
+    patch = {}
+    if not skill.get("status"):
+        patch["status"] = "active"
+    if not skill.get("visibility"):
+        patch["visibility"] = "private"
+    if not patch:
         return skill
-    return {**skill, "status": "active"}
+    return {**skill, **patch}
 
 
 def _list_skills() -> list[dict]:
@@ -185,6 +193,40 @@ def _set_skill_status(skill_id: str, status: str) -> Optional[dict]:
     updated = {**existing, "status": status}
     _stub_skills[skill_id] = updated
     return updated
+
+
+def _set_skill_visibility(skill_id: str, visibility: str) -> Optional[dict]:
+    """Persist a visibility change (e.g. publish to marketplace). Returns the
+    updated skill or None if it does not exist."""
+    if _mongo_ok:
+        res = _skills_col.find_one_and_update(
+            {"id": skill_id},
+            {"$set": {"visibility": visibility}},
+            projection={"_id": 0},
+            return_document=True,
+        )
+        return _normalize_status(res)
+    existing = _stub_skills.get(skill_id)
+    if existing is None:
+        return None
+    updated = {**existing, "visibility": visibility}
+    _stub_skills[skill_id] = updated
+    return updated
+
+
+def _persist_skill(skill: dict) -> dict:
+    """Upsert a skill into the store (Mongo or stub) and archive in history.
+
+    Used by the ingest endpoint. Returns the normalized stored skill.
+    """
+    sid = skill["id"]
+    if _mongo_ok:
+        _skills_col.replace_one({"id": sid}, skill, upsert=True)
+        _history_col.insert_one({**skill, "_history_note": "ingest"})
+    else:
+        _stub_skills[sid] = skill
+        _stub_history.setdefault(sid, []).append(skill.copy())
+    return _normalize_status(skill)
 
 
 def _get_skill_history(skill_id: str) -> list[dict]:
@@ -223,21 +265,6 @@ app.add_middleware(
 # local/dev and the existing dashboard keep working without keys; the Docker
 # stack turns it on.
 app.add_middleware(APIKeyMiddleware, auth_store=_auth_store, enabled=AUTH_ENABLED)
-
-
-def get_current_user(request: Request) -> dict:
-    """Resolve the calling user from X-API-Key (or the value the middleware
-    already cached). Always enforced on user-scoped endpoints (repos), even when
-    the global AUTH_ENABLED gate is off, because these resources need an owner.
-    """
-    cached = getattr(request.state, "user", None)
-    if cached:
-        return cached
-    api_key = request.headers.get("X-API-Key")
-    user = _auth_store.verify_key(api_key) if api_key else None
-    if user is None:
-        raise HTTPException(status_code=401, detail="Valid X-API-Key header required")
-    return user.model_dump()
 
 
 # Initialize seed data eagerly (also works when TestClient skips startup events)
@@ -281,7 +308,8 @@ async def api_skill_history(skill_id: str):
 class RunRequest(BaseModel):
     task_description: str
     max_iterations: int = 3
-    repo_id: Optional[str] = None  # namespace to evolve against (None = global bank)
+    org_id: Optional[str] = None  # org namespace to evolve against (None = global bank)
+    code_snapshot: str = ""  # inline code context the agent edits
 
 
 @app.post("/api/run")
@@ -290,8 +318,12 @@ async def api_trigger_run(req: RunRequest):
     # Try the real TaskRunner first
     if _real_task_runner:
         try:
-            runner = TaskRunner(repo_id=req.repo_id)
-            result = runner.run(req.task_description, req.max_iterations)
+            runner = TaskRunner(org_id=req.org_id)
+            result = runner.run(
+                req.task_description,
+                code_snapshot=req.code_snapshot,
+                max_iterations=req.max_iterations,
+            )
             # TaskRunner already persists the run to the `runs` collection,
             # so we do not call _add_run here (avoids double-counting).
             run_data = result.model_dump()
@@ -428,38 +460,97 @@ async def api_verify(request: Request):
 
 # ─── Multi-repo registry ─────────────────────────────────────────────────────
 
+# ─── Marketplace + Ingest + Apply ──────────────────────────────────────────
 
-@app.post("/api/repos")
-async def api_create_repo(req: RepoCreateRequest, user: dict = Depends(get_current_user)):
-    """Register a repository. Each repo is an isolated skill-bank namespace."""
+
+class IngestRequest(BaseModel):
+    content: str
+    filename: str = "skill.txt"
+    org_id: Optional[str] = None
+
+
+@app.post("/api/skills/ingest")
+async def api_ingest_skill(req: IngestRequest):
+    """Ingest any skill format (.md, .json, .yaml, .txt) and normalize to Yunaki Skill."""
     try:
-        repo = _auth_store.create_repo(
-            user_id=user["id"],
-            url=req.url,
-            branch=req.branch,
-            token=req.token,
-            name=req.name,
-        )
+        from yunaki_skills.skill_ingestor import SkillIngestor
+        ingestor = SkillIngestor()
+        result = ingestor.ingest(req.content, filename=req.filename, org_id=req.org_id)
+        bank = SkillBank()
+        bank.add(result.skill)
+        return ok({
+            "skill": result.skill.model_dump(),
+            "format_detected": result.format_detected,
+            "warnings": result.warnings,
+        })
     except Exception as e:
-        logger.exception("create_repo failed")
-        raise HTTPException(status_code=500, detail=f"could not register repo: {e}")
-    return ok(repo.model_dump())
+        logger.exception("skill ingest failed")
+        raise HTTPException(status_code=500, detail=f"Ingest failed: {e}")
 
 
-@app.get("/api/repos")
-async def api_list_repos(user: dict = Depends(get_current_user)):
-    """List repositories owned by the calling user."""
-    repos = _auth_store.list_repos(user["id"])
-    return ok([r.model_dump() for r in repos])
+@app.post("/api/skills/ingest-file")
+async def api_ingest_skill_file(file: UploadFile = File(...), org_id: Optional[str] = Form(None)):
+    """Upload a skill file (.md, .json, .yaml, .txt) and ingest it."""
+    try:
+        from yunaki_skills.skill_ingestor import SkillIngestor
+        content = (await file.read()).decode("utf-8")
+        ingestor = SkillIngestor()
+        result = ingestor.ingest(content, filename=file.filename or "skill.txt", org_id=org_id)
+        bank = SkillBank()
+        bank.add(result.skill)
+        return ok({
+            "skill": result.skill.model_dump(),
+            "format_detected": result.format_detected,
+            "warnings": result.warnings,
+        })
+    except Exception as e:
+        logger.exception("skill file ingest failed")
+        raise HTTPException(status_code=500, detail=f"Ingest failed: {e}")
 
 
-@app.delete("/api/repos/{repo_id}")
-async def api_delete_repo(repo_id: str, user: dict = Depends(get_current_user)):
-    """Remove a repository owned by the calling user."""
-    deleted = _auth_store.delete_repo(user["id"], repo_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail=f"Repo '{repo_id}' not found")
-    return ok({"id": repo_id, "deleted": True})
+@app.get("/api/marketplace")
+async def api_marketplace(q: str = "", top_k: int = 10):
+    """Search the public skill marketplace."""
+    try:
+        bank = SkillBank()
+        if q:
+            skills = bank.search_marketplace(q, top_k=top_k)
+        else:
+            # Return all public skills
+            all_skills = bank.list_all()
+            skills = [s for s in all_skills if s.visibility == "public"][:top_k]
+        return ok([s.model_dump() for s in skills])
+    except Exception as e:
+        logger.exception("marketplace search failed")
+        raise HTTPException(status_code=500, detail=f"Marketplace search failed: {e}")
+
+
+@app.post("/api/skills/{skill_id}/publish")
+async def api_publish_skill(skill_id: str):
+    """Publish a skill to the public marketplace."""
+    try:
+        bank = SkillBank()
+        success = bank.publish_skill(skill_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found")
+        return ok({"skill_id": skill_id, "visibility": "public"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("publish skill failed")
+        raise HTTPException(status_code=500, detail=f"Publish failed: {e}")
+
+
+@app.get("/api/org/{org_id}/skills")
+async def api_org_skills(org_id: str):
+    """List skills for an organization."""
+    try:
+        bank = SkillBank(org_id=org_id)
+        skills = bank.list_all()
+        return ok([s.model_dump() for s in skills])
+    except Exception as e:
+        logger.exception("org skills list failed")
+        raise HTTPException(status_code=500, detail=f"Failed: {e}")
 
 
 # ─── Live Runs (streaming) ─────────────────────────────────────────────────

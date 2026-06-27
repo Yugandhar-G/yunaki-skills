@@ -111,7 +111,7 @@ class RepoCreateRequest(BaseModel):
 class RunRequest(BaseModel):
     task_description: str
     max_iterations: int = Field(default=3, ge=1, le=10)
-    repo_id: Optional[str] = None  # namespace to run against (None = global)
+    org_id: Optional[str] = None  # org namespace to run against (None = global)
     run_id: Optional[str] = None  # client-supplied id so it can pre-subscribe to /ws
     wait: bool = True  # True = block + return result; False = run in background
 

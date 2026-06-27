@@ -30,7 +30,7 @@ _EMBED_DIM = 384
 class SkillBank(SkillBank):
     """MongoDB-backed skill storage. Implements the SkillBank interface."""
 
-    def __init__(self, repo_id: Optional[str] = None):
+    def __init__(self, org_id: Optional[str] = None):
         uri = build_mongo_uri()
         self._client = MongoClient(uri)
         self._db = self._client["yunaki"]
@@ -39,9 +39,10 @@ class SkillBank(SkillBank):
         self._embeddings_col = self._db["skill_embeddings"]
         self._runs = self._db["runs"]
 
-        # Namespace isolation: each repo gets its own logical skill bank. None
-        # is the shared/global namespace. All reads and writes are scoped to it.
-        self._repo_id = repo_id
+        # Namespace isolation: each org gets its own logical skill bank. None
+        # is the personal/global namespace. All reads and writes are scoped to
+        # it. Skills are universal — namespacing is by org, never by repo.
+        self._org_id = org_id
 
         # Encoder is loaded lazily on first use. If sentence-transformers (or
         # its torch/torchvision stack) can't load, we fall back to a
@@ -97,8 +98,10 @@ class SkillBank(SkillBank):
     def _skill_to_doc(self, skill: Skill) -> dict:
         doc = skill.model_dump()
         # Pin the skill to this bank's namespace regardless of what the caller
-        # set, so a skill cannot leak across repos via a stale repo_id field.
-        doc["repo_id"] = self._repo_id
+        # set, so a skill cannot leak across orgs via a stale org_id field.
+        doc["org_id"] = self._org_id
+        # Drop any legacy repo_id so old documents don't carry the dead field.
+        doc.pop("repo_id", None)
         return doc
 
     def _doc_to_skill(self, doc: dict) -> Optional[Skill]:
@@ -110,11 +113,11 @@ class SkillBank(SkillBank):
     def _namespace_filter(self) -> dict:
         """Mongo filter restricting to this bank's namespace.
 
-        `{"repo_id": None}` matches both explicit nulls and legacy docs that
-        predate the repo_id field, keeping the global namespace backward
+        `{"org_id": None}` matches both explicit nulls and legacy/seed docs that
+        predate the org_id field, keeping the personal/global namespace backward
         compatible.
         """
-        return {"repo_id": self._repo_id}
+        return {"org_id": self._org_id}
 
     def _retrieval_filter(self) -> dict:
         """Namespace filter + governance gate for injectable skills.
@@ -166,10 +169,10 @@ class SkillBank(SkillBank):
         """Add a new skill. Returns the skill ID."""
         doc = self._skill_to_doc(skill)
 
-        # Upsert keyed by (id, repo_id) so the same skill id can exist
-        # independently in different repo namespaces.
+        # Upsert keyed by (id, org_id) so the same skill id can exist
+        # independently in different org namespaces.
         self._skills.update_one(
-            {"id": skill.id, "repo_id": self._repo_id},
+            {"id": skill.id, "org_id": self._org_id},
             {"$setOnInsert": doc},
             upsert=True,
         )
@@ -183,8 +186,8 @@ class SkillBank(SkillBank):
         embed_text = f"{skill.title} {skill.when_to_apply} {skill.trigger.query}"
         embedding = self._compute_embedding(embed_text)
         self._embeddings_col.update_one(
-            {"skill_id": skill.id, "repo_id": self._repo_id},
-            {"$set": {"skill_id": skill.id, "repo_id": self._repo_id, "embedding": embedding}},
+            {"skill_id": skill.id, "org_id": self._org_id},
+            {"$set": {"skill_id": skill.id, "org_id": self._org_id, "embedding": embedding}},
             upsert=True,
         )
 
@@ -216,8 +219,8 @@ class SkillBank(SkillBank):
         embed_text = f"{skill.title} {skill.when_to_apply} {skill.trigger.query}"
         embedding = self._compute_embedding(embed_text)
         self._embeddings_col.update_one(
-            {"skill_id": skill.id, "repo_id": self._repo_id},
-            {"$set": {"skill_id": skill.id, "repo_id": self._repo_id, "embedding": embedding}},
+            {"skill_id": skill.id, "org_id": self._org_id},
+            {"$set": {"skill_id": skill.id, "org_id": self._org_id, "embedding": embedding}},
             upsert=True,
         )
 
@@ -242,6 +245,61 @@ class SkillBank(SkillBank):
 
         result = self._skills.update_one(scope, {"$set": {"status": status.value}})
         return result.modified_count > 0 or result.matched_count > 0
+
+    def increment_usage(self, skill_id: str, success: bool) -> bool:
+        """Record an application of a skill.
+
+        Increments usage_count, and success_count when the application led to a
+        passing result. This is the self-evolution signal: a skill's hit rate
+        (success_count / usage_count) reflects how well it actually performs as
+        it is reused, independent of its model-assigned score.
+        """
+        scope = {"id": skill_id, **self._namespace_filter()}
+        inc = {"usage_count": 1}
+        if success:
+            inc["success_count"] = 1
+        result = self._skills.update_one(scope, {"$inc": inc})
+        return result.matched_count > 0
+
+    def publish_skill(self, skill_id: str) -> bool:
+        """Publish a skill to the marketplace (visibility -> 'public')."""
+        scope = {"id": skill_id, **self._namespace_filter()}
+        result = self._skills.update_one(scope, {"$set": {"visibility": "public"}})
+        return result.matched_count > 0
+
+    def search_marketplace(self, query: str, top_k: int = 5) -> list[Skill]:
+        """Semantic search across PUBLIC skills only, ignoring org namespace.
+
+        The marketplace is global: any user can discover any published skill,
+        regardless of which org created it. Only retrievable (approved/active)
+        public skills are returned.
+        """
+        query_vec = self._compute_embedding(query)
+        statuses = governance.retrievable_statuses()
+        docs = list(
+            self._skills.find(
+                {
+                    "visibility": "public",
+                    "$or": [
+                        {"status": {"$in": statuses}},
+                        {"status": {"$exists": False}},
+                    ],
+                }
+            )
+        )
+        if not docs:
+            return []
+
+        scored = []
+        for doc in docs:
+            skill = self._doc_to_skill(doc)
+            embed_text = f"{skill.title} {skill.when_to_apply} {skill.trigger.query}"
+            corpus_vec = self._compute_embedding(embed_text)
+            sim = self._cosine_similarity(query_vec, corpus_vec)
+            scored.append((sim, skill))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [skill for _, skill in scored[:top_k]]
 
     def search_semantic(self, query: str, top_k: int = 3) -> list[Skill]:
         """Semantic search for task-level skills.

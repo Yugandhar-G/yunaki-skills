@@ -163,7 +163,7 @@ def test_demo_handicap_clause_appends_constraint(monkeypatch):
     monkeypatch.setenv("YUNAKI_DEMO_HANDICAP", "1,2")
     clause1 = tr._demo_handicap_clause(1)
     clause3 = tr._demo_handicap_clause(3)
-    assert "first 1 endpoint" in clause1
+    assert "first 1 item" in clause1
     assert clause3 == ""  # past the schedule
 
 

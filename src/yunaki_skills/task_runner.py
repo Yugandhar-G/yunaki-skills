@@ -2,18 +2,27 @@
 TaskRunner — the orchestration loop.
 
 Implements the TaskRunner interface from yunaki_skills.interfaces.
+
+Universal: a task is a description + inline code context (a string), NOT a repo
+path. The runner materializes the code into an ephemeral workspace, lets the
+agent edit it, and scores it with a test command. Skills self-evolve as they are
+used: every iteration records usage on the injected skills.
+
 Orchestrates the full skill evolution loop:
   1. Get baseline score (run eval without skills)
   2. Retrieve relevant skills via SkillRetriever
   3. Run agent with injected skills
   4. Evaluate the result
-  5. If failed, extract a new skill via SkillExtractor
-  6. If existing skill didn't help, evolve it via SkillEvolver
-  7. Repeat until passed or max_iterations reached
+  5. Record usage on injected skills (increment_usage)
+  6. If failed, extract a new skill via SkillExtractor
+  7. If existing skill didn't help, evolve it via SkillEvolver
+  8. Repeat until passed or max_iterations reached
 """
 
 import logging
 import os
+import shutil
+import tempfile
 from typing import Callable, Optional
 
 from yunaki_skills import governance
@@ -34,9 +43,8 @@ from yunaki_skills.skill_retriever import SkillRetriever
 
 logger = logging.getLogger(__name__)
 
-# Project root — two levels up from this source file
-_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-_DEFAULT_REPO_PATH = os.path.join(_PROJECT_ROOT, "target_repo")
+# Filename used when materializing the inline code snapshot into the workspace.
+_SNAPSHOT_FILENAME = "solution.py"
 
 
 def _truthy(value: str) -> bool:
@@ -47,7 +55,7 @@ def _demo_handicap_clause(iteration: int) -> str:
     """Staged demo constraint appended to the agent's task for early iterations.
 
     Enabled by YUNAKI_DEMO_MODE. The agent is told to implement only the first
-    K required endpoints (in listed order) on a given pass, where K comes from
+    K required items (in listed order) on a given pass, where K comes from
     YUNAKI_DEMO_HANDICAP (default "1,2" => iter1 does 1, iter2 does 2, iter3+
     unconstrained). This forces genuine sub-threshold scores on early passes so
     the extract -> evolve -> pass cycle is exercised live, instead of the agent
@@ -70,9 +78,9 @@ def _demo_handicap_clause(iteration: int) -> str:
     k = schedule[iteration - 1]
     return (
         "\n\n[STAGED DEMO CONSTRAINT] The task above lists several required "
-        f"endpoints. In THIS pass, implement ONLY the first {k} endpoint(s) in "
+        f"items. In THIS pass, implement ONLY the first {k} item(s) in "
         "the exact order they are listed in the task. Do NOT add the remaining "
-        "endpoints — leave them entirely unimplemented (no route, no handler). "
+        "items — leave them entirely unimplemented. "
         "This staging is intentional; a later pass will add the rest."
     )
 
@@ -80,17 +88,16 @@ def _demo_handicap_clause(iteration: int) -> str:
 class TaskRunner(ITaskRunner):
     """Orchestrates the full skill evolution loop."""
 
-    def __init__(self, repo_id: Optional[str] = None):
-        # repo_id namespaces the skill bank so each registered repo evolves its
-        # own isolated set of skills. None = the shared/global bank.
-        self._repo_id = repo_id
-        self._bank = SkillBank(repo_id=repo_id)
+    def __init__(self, org_id: Optional[str] = None):
+        # org_id namespaces the skill bank so each org evolves its own isolated
+        # set of skills. None = the personal/global bank.
+        self._org_id = org_id
+        self._bank = SkillBank(org_id=org_id)
         self._extractor = SkillExtractor()
         self._evolver = SkillEvolver()
         self._retriever = SkillRetriever(bank=self._bank)
         self._agent = AntigravityClient()
         self._scorer = EvalScorer()
-        self._repo_path = os.environ.get("TARGET_REPO", _DEFAULT_REPO_PATH)
 
     @staticmethod
     def _emit(progress: Optional[Callable[[dict], None]], event: dict) -> None:
@@ -106,6 +113,19 @@ class TaskRunner(ITaskRunner):
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("progress sink failed: %s", e)
 
+    def _record_usage(self, skills: list[Skill], success: bool) -> None:
+        """Record an application of each injected skill (best-effort).
+
+        This is the self-evolution signal: usage/success counts accumulate every
+        time a skill is applied, so the bank learns which skills actually work as
+        they are reused. Failures here must never break the loop.
+        """
+        for skill in skills:
+            try:
+                self._bank.increment_usage(skill.id, success=success)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("increment_usage failed for %s: %s", skill.id, e)
+
     def _learn_from_success(self, task_description: str, trace: str, eval_result: EvalResult) -> Optional[str]:
         """Extract and store a reusable skill from a SUCCESSFUL trace.
 
@@ -114,10 +134,6 @@ class TaskRunner(ITaskRunner):
         persists in the bank and surfaces on future related tasks via semantic
         retrieval. Returns the stored skill id, or None if nothing could be
         extracted or it already existed.
-
-        If the extracted skill already exists, the existing version is kept — we
-        do not overwrite a battle-tested skill on the strength of a fresh
-        one-shot success.
         """
         try:
             skill = self._extractor.extract(
@@ -149,21 +165,47 @@ class TaskRunner(ITaskRunner):
     def run(
         self,
         task_description: str,
+        code_snapshot: str = "",
+        test_command: Optional[list[str]] = None,
         max_iterations: int = 3,
         progress: Optional[Callable[[dict], None]] = None,
     ) -> TaskResult:
         """Run a task through the full skill evolution loop.
 
+        `code_snapshot` is the inline code context the agent edits (a string).
+        `test_command` is the command used to score it (defaults to pytest).
         `progress` is an optional sink invoked with structured event dicts
         (run_start, iteration_start, eval_result, skill_created, skill_evolved,
         run_complete) so callers can stream live progress over WebSocket.
         """
-        repo_path = self._repo_path
+        workspace = tempfile.mkdtemp(prefix="yunaki_run_")
+        if code_snapshot:
+            with open(os.path.join(workspace, _SNAPSHOT_FILENAME), "w") as f:
+                f.write(code_snapshot)
+
+        try:
+            return self._run_in_workspace(
+                task_description=task_description,
+                workspace=workspace,
+                test_command=test_command,
+                max_iterations=max_iterations,
+                progress=progress,
+            )
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+
+    def _run_in_workspace(
+        self,
+        task_description: str,
+        workspace: str,
+        test_command: Optional[list[str]],
+        max_iterations: int,
+        progress: Optional[Callable[[dict], None]],
+    ) -> TaskResult:
         logger.info(
-            "TaskRunner starting: task=%r  repo=%s  repo_id=%s  max_iterations=%d",
+            "TaskRunner starting: task=%r  org_id=%s  max_iterations=%d",
             task_description,
-            repo_path,
-            self._repo_id,
+            self._org_id,
             max_iterations,
         )
         print(f"\n{'=' * 60}")
@@ -174,14 +216,21 @@ class TaskRunner(ITaskRunner):
             {
                 "type": "run_start",
                 "task_description": task_description,
-                "repo_id": self._repo_id,
+                "org_id": self._org_id,
                 "max_iterations": max_iterations,
             },
         )
 
+        def _evaluate() -> EvalResult:
+            return self._scorer.evaluate(
+                task_description,
+                test_command=test_command,
+                workspace=workspace,
+            )
+
         # ─── Step 1: Baseline score (no skills) ─────────────────────────
         print("\n[1] Running baseline evaluation (no skills)...")
-        baseline_eval = self._scorer.evaluate(task_description, repo_path)
+        baseline_eval = _evaluate()
         score_before = baseline_eval.score
         print(f"  Baseline: {baseline_eval.tasks_passed}/{baseline_eval.tasks_total} passed = {score_before:.0f}%")
         self._emit(
@@ -262,11 +311,13 @@ class TaskRunner(ITaskRunner):
             if iter_task != task_description:
                 print(f"  [demo] Staged constraint active for iteration {iteration}")
             print(f"  [3] Running agent with {len(task_skills)} skills...")
+            # Skills actually applied this iteration (for usage accounting).
+            applied_skills = list(task_skills)
             try:
                 trace = self._agent.run_task(
                     task_description=iter_task,
                     skills=task_skills,
-                    repo_path=repo_path,
+                    repo_path=workspace,
                 )
                 full_trace += f"\n--- Iteration {iteration} Trace ---\n{trace}\n"
             except Exception as e:
@@ -281,11 +332,12 @@ class TaskRunner(ITaskRunner):
                     print(f"  Event-driven triggers matched: {[s.id for s in triggered]}")
                     # Re-run with event-driven skills included
                     all_skills = task_skills + [s for s in triggered if s.id not in {sk.id for sk in task_skills}]
+                    applied_skills = list(all_skills)
                     try:
                         trace = self._agent.run_task(
                             task_description=iter_task,
                             skills=all_skills,
-                            repo_path=repo_path,
+                            repo_path=workspace,
                         )
                         full_trace += f"\n--- Iteration {iteration} (with triggers) Trace ---\n{trace}\n"
                     except Exception as e:
@@ -298,7 +350,7 @@ class TaskRunner(ITaskRunner):
 
             # ─── Step 4: Evaluate the result ─────────────────────────────
             print(f"  [4] Evaluating iteration {iteration}...")
-            eval_result = self._scorer.evaluate(task_description, repo_path)
+            eval_result = _evaluate()
             current_score = eval_result.score
             print(f"  Result: {eval_result.tasks_passed}/{eval_result.tasks_total} = {current_score:.0f}%")
             self._emit(
@@ -314,7 +366,12 @@ class TaskRunner(ITaskRunner):
                 },
             )
 
-            # ─── Step 5: If passed, we're done ───────────────────────────
+            # ─── Step 5: Record usage on the injected skills ─────────────
+            # Self-evolution signal — every applied skill gets a usage tick, and
+            # a success tick when this iteration passed.
+            self._record_usage(applied_skills, success=eval_result.passed)
+
+            # ─── Step 6: If passed, we're done ───────────────────────────
             if eval_result.passed:
                 print(f"  ✅ PASSED at iteration {iteration}!")
                 # Learn-on-success safety net: if this run passed without ever
@@ -344,7 +401,7 @@ class TaskRunner(ITaskRunner):
                         )
                 break
 
-            # ─── Step 6: Failed — learn from it ──────────────────────────
+            # ─── Step 7: Failed — learn from it ──────────────────────────
             print("  [5] Learning from failure...")
 
             # If we already created a skill earlier in THIS run and still

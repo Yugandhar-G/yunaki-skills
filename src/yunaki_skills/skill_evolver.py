@@ -14,10 +14,14 @@ from yunaki_skills.interfaces import (
     SkillEvolver,
 )
 
-EVOLUTION_PROMPT = """You are a skill evolution engine for a coding agent. An existing skill was applied during a task execution, but the task still failed. Refine and improve the skill based on the new evidence.
+EVOLUTION_PROMPT = """You are a skill evolution engine for a coding agent. An existing skill was applied during a task execution. Reflect on the outcome, then refine and improve the skill so it is more effective next time.
 
 EXISTING SKILL:
 {skill_json}
+
+USAGE HISTORY:
+- Times applied: {usage_count}
+- Times it led to a passing result: {success_count}
 
 NEW EXECUTION TRACE:
 {new_trace}
@@ -29,7 +33,12 @@ NEW EVALUATION RESULT:
 - Tests: {tasks_passed}/{tasks_total} passed
 - Test output: {test_output}
 
-Refine the skill to address what still went wrong. Return the improved skill as JSON with the same schema:
+STEP 1 — REFLECT. Before rewriting anything, reason internally about three things:
+  (a) What did this skill get RIGHT? Which instructions clearly helped?
+  (b) What did it get WRONG or fail to cover? Which part of the task still broke?
+  (c) Given the skill was used and the result was as shown above, what SPECIFIC instructions would make this skill more effective?
+
+STEP 2 — REWRITE. Fold the reflection into improved instructions. Return the improved skill as JSON with the same schema:
 {{
   "title": "<updated title if needed>",
   "granularity": "<task-level or event-driven>",
@@ -46,13 +55,13 @@ Refine the skill to address what still went wrong. Return the improved skill as 
 }}
 
 Rules:
-- Improve the instructions based on what still failed
-- Add or modify steps to address the new failure mode
-- If the trigger patterns missed a relevant error, update them
-- Adjust the score: increase if the new trace shows partial improvement, decrease if it's worse
-- Increment the version (e.g., "0.1" -> "0.2")
-- Keep the same id and granularity unless there's a strong reason to change
-- Be specific — vague instructions are not useful
+- Ground every change in the reflection — keep what worked, fix what failed.
+- Add or modify steps to address the specific failure mode in the trace.
+- If the trigger patterns missed a relevant error, update them.
+- Adjust the score: increase if the new trace shows improvement, decrease if it's worse.
+- Increment the version (e.g., "0.1" -> "0.2").
+- Keep the same id and granularity unless there's a strong reason to change.
+- Be specific and concrete — vague instructions are not useful.
 
 Respond with ONLY the JSON object, no markdown formatting, no explanation."""
 
@@ -69,6 +78,8 @@ class SkillEvolver(SkillEvolver):
         """Evolve an existing skill based on new execution evidence."""
         prompt = EVOLUTION_PROMPT.format(
             skill_json=skill.model_dump_json(indent=2),
+            usage_count=skill.usage_count,
+            success_count=skill.success_count,
             new_trace=new_trace[:8000],
             passed=new_eval.passed,
             score=new_eval.score,
@@ -146,6 +157,15 @@ class SkillEvolver(SkillEvolver):
                 when_to_apply=data.get("when_to_apply", skill.when_to_apply),
                 instructions=data.get("instructions", skill.instructions),
                 provenance=provenance,
+                # Carry universal metadata across the evolution — an evolved
+                # skill stays in the same namespace and keeps its usage history.
+                status=skill.status,
+                org_id=skill.org_id,
+                visibility=skill.visibility,
+                source_format=skill.source_format,
+                source_uri=skill.source_uri,
+                usage_count=skill.usage_count,
+                success_count=skill.success_count,
             )
 
             return evolved_skill
@@ -192,4 +212,11 @@ class SkillEvolver(SkillEvolver):
             when_to_apply=skill.when_to_apply,
             instructions=skill.instructions,
             provenance=provenance,
+            status=skill.status,
+            org_id=skill.org_id,
+            visibility=skill.visibility,
+            source_format=skill.source_format,
+            source_uri=skill.source_uri,
+            usage_count=skill.usage_count,
+            success_count=skill.success_count,
         )
