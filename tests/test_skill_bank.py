@@ -126,15 +126,17 @@ def test_save_run(skill_bank):
 
 
 def test_hash_embedding_is_normalized(skill_bank):
-    import numpy as np
+    import math
 
-    vec = np.array(skill_bank._hash_embedding("fastapi endpoint user"))
-    assert vec.shape[0] == 384
-    assert np.isclose(np.linalg.norm(vec), 1.0)
+    vec = skill_bank._hash_embedding("fastapi endpoint user")
+    assert len(vec) == 384
+    norm = math.sqrt(sum(v * v for v in vec))
+    assert math.isclose(norm, 1.0, rel_tol=1e-6)
 
 
 def test_hash_embedding_empty_text(skill_bank):
-    import numpy as np
+    import math
 
-    vec = np.array(skill_bank._hash_embedding(""))
-    assert np.linalg.norm(vec) == pytest.approx(0.0)
+    vec = skill_bank._hash_embedding("")
+    norm = math.sqrt(sum(v * v for v in vec))
+    assert norm == pytest.approx(0.0)
