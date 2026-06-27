@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 from tests.conftest import install_fake_skill_llm
-from yunaki_skills import llm_judge as judge_mod
 from yunaki_skills.llm_judge import JudgeScores, LLMJudge, _read_code, _weighted_overall
 
 GOOD_JUDGMENT = json.dumps(

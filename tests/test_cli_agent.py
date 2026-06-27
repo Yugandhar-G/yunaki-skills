@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-from types import SimpleNamespace
-
-import pytest
 
 from tests.conftest import make_task_skill
 from yunaki_skills import cli_agent
