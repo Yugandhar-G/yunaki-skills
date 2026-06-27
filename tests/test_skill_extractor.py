@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from tests.conftest import install_fake_gemini
+from tests.conftest import install_fake_skill_llm
 from yunaki_skills import skill_extractor as ext_mod
 from yunaki_skills.interfaces import Granularity, TriggerType
 
@@ -46,7 +46,7 @@ VALID_EVENT_SKILL_JSON = json.dumps(
 
 
 def test_extract_task_level_skill(monkeypatch, eval_fail):
-    install_fake_gemini(monkeypatch, ext_mod, VALID_TASK_SKILL_JSON)
+    install_fake_skill_llm(monkeypatch, VALID_TASK_SKILL_JSON)
     extractor = ext_mod.SkillExtractor()
 
     skill = extractor.extract("Implement GET /users", "trace text", eval_fail)
@@ -62,7 +62,7 @@ def test_extract_task_level_skill(monkeypatch, eval_fail):
 
 
 def test_extract_event_driven_skill(monkeypatch, eval_fail):
-    install_fake_gemini(monkeypatch, ext_mod, VALID_EVENT_SKILL_JSON)
+    install_fake_skill_llm(monkeypatch, VALID_EVENT_SKILL_JSON)
     skill = ext_mod.SkillExtractor().extract("task", "KeyError trace", eval_fail)
 
     assert skill.granularity == Granularity.EVENT_DRIVEN
@@ -71,31 +71,48 @@ def test_extract_event_driven_skill(monkeypatch, eval_fail):
 
 
 def test_extract_invalid_json_returns_none(monkeypatch, eval_fail):
-    install_fake_gemini(monkeypatch, ext_mod, "this is not json {")
+    install_fake_skill_llm(monkeypatch, "this is not json {")
     assert ext_mod.SkillExtractor().extract("task", "trace", eval_fail) is None
 
 
 def test_extract_empty_response_returns_none(monkeypatch, eval_fail):
-    install_fake_gemini(monkeypatch, ext_mod, "")
+    install_fake_skill_llm(monkeypatch, "")
     assert ext_mod.SkillExtractor().extract("task", "trace", eval_fail) is None
 
 
 def test_extract_passes_eval_fields_into_prompt(monkeypatch, eval_fail):
-    fake = install_fake_gemini(monkeypatch, ext_mod, VALID_TASK_SKILL_JSON)
+    fake = install_fake_skill_llm(monkeypatch, VALID_TASK_SKILL_JSON)
     ext_mod.SkillExtractor().extract("My Task", "the trace", eval_fail)
 
-    _, kwargs = fake.models.generate_content.call_args
-    prompt = kwargs["contents"]
+    prompt = fake.call_args[0][0]
     assert "My Task" in prompt
     assert "the trace" in prompt
     assert "3/9" in prompt  # tasks_passed/tasks_total rendered
 
 
 def test_extract_truncates_long_trace(monkeypatch, eval_fail):
-    fake = install_fake_gemini(monkeypatch, ext_mod, VALID_TASK_SKILL_JSON)
+    fake = install_fake_skill_llm(monkeypatch, VALID_TASK_SKILL_JSON)
     huge = "x" * 20000
     ext_mod.SkillExtractor().extract("task", huge, eval_fail)
 
-    _, kwargs = fake.models.generate_content.call_args
+    prompt = fake.call_args[0][0]
     # Trace is capped at 8000 chars; full 20k must not appear verbatim.
-    assert huge not in kwargs["contents"]
+    assert huge not in prompt
+
+
+def test_extract_contrastive_uses_both_traces(monkeypatch, eval_pass, eval_fail):
+    fake = install_fake_skill_llm(monkeypatch, VALID_TASK_SKILL_JSON)
+    skill = ext_mod.SkillExtractor().extract_contrastive(
+        "My Task", "PASS_TRACE_MARKER", "FAIL_TRACE_MARKER", eval_pass, eval_fail
+    )
+    assert skill is not None
+    assert skill.id == "skill_implement_endpoint"
+    prompt = fake.call_args[0][0]
+    assert "PASS_TRACE_MARKER" in prompt
+    assert "FAIL_TRACE_MARKER" in prompt
+
+
+def test_extract_contrastive_bad_json_returns_none(monkeypatch, eval_pass, eval_fail):
+    install_fake_skill_llm(monkeypatch, "not json")
+    skill = ext_mod.SkillExtractor().extract_contrastive("t", "p", "f", eval_pass, eval_fail)
+    assert skill is None

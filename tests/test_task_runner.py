@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -200,6 +201,59 @@ def test_injected_agent_is_used_over_default(monkeypatch, components, eval_fail,
     runner.run("task", max_iterations=3)
 
     assert components["agent"].run_task.called
+
+
+def test_contrastive_extraction_used_when_rollouts_gt_1(monkeypatch, components, eval_fail):
+    # baseline fail, control fail, iter1 fail -> contrastive extraction.
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_fail]
+    components["retriever"].retrieve_for_task.return_value = []
+    components["retriever"].check_triggers.return_value = []
+    components["agent"].run_task.return_value = "trace"
+    components["bank"].get.return_value = None
+    components["bank"].add.return_value = "skill_contrast"
+
+    contr = MagicMock()
+    contr.run.return_value = make_task_skill("skill_contrast")
+    monkeypatch.setattr(tr, "ContrastiveRunner", lambda *a, **k: contr)
+
+    runner = build_runner(monkeypatch, components)
+    result = runner.run("task", max_iterations=1, rollouts=2)
+
+    contr.run.assert_called_once()
+    components["extractor"].extract.assert_not_called()  # contrastive supplied the skill
+    assert "skill_contrast" in result.skills_created
+
+
+def test_control_arm_reset_restores_full_tree(monkeypatch, components, eval_fail, eval_pass):
+    """The control arm may create/edit many files; the skilled run must start
+    from the identical pre-control tree (multi-file snapshot/restore)."""
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_pass]
+    skill = make_task_skill("skill_x")
+    components["retriever"].retrieve_for_task.return_value = [skill]
+    components["retriever"].check_triggers.return_value = []
+    components["extractor"].extract.return_value = None
+    components["bank"].get.return_value = None
+
+    seen: dict[str, list[str]] = {}
+
+    def agent_run(task_description, skills, repo_path):
+        if not skills:
+            # Control arm pollutes the workspace with an extra file.
+            with open(os.path.join(repo_path, "garbage.py"), "w") as f:
+                f.write("# junk\n")
+        else:
+            seen["skilled_files"] = sorted(os.listdir(repo_path))
+        return "trace"
+
+    components["agent"].run_task.side_effect = agent_run
+
+    runner = build_runner(monkeypatch, components)
+    runner.run("task", code_snapshot="print('hi')\n", max_iterations=1)
+
+    # Skilled run must NOT see the control arm's garbage, and must see the
+    # original materialized file restored.
+    assert "garbage.py" not in seen["skilled_files"]
+    assert tr._SNAPSHOT_FILENAME in seen["skilled_files"]
 
 
 def test_default_agent_built_via_factory(monkeypatch, components):

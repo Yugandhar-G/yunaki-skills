@@ -18,11 +18,10 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
 
-from yunaki_skills.config import build_mongo_uri, get
+from yunaki_skills import skill_llm
+from yunaki_skills.config import build_mongo_uri
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +112,7 @@ class LLMJudge:
     """Gemini-powered code-quality judge with MongoDB persistence."""
 
     def __init__(self, persist: bool = True):
-        api_key = get("GEMINI_API_KEY")
-        self._client = genai.Client(api_key=api_key)
-        self._model = "gemini-2.5-flash"
+        self._model = skill_llm.active_model_label()
         self._evaluations = None
         if persist:
             self._evaluations = self._connect_evaluations()
@@ -141,15 +138,7 @@ class LLMJudge:
         prompt = JUDGE_PROMPT.format(task_description=task_description, code=code)
 
         try:
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.2,
-                    response_mime_type="application/json",
-                ),
-            )
-            text = (response.text or "").strip()
+            text = (skill_llm.complete_json(prompt) or "").strip()
             data = json.loads(text)
             scores = JudgeScores(
                 correctness=float(data["correctness"]),

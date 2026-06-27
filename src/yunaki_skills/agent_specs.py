@@ -65,9 +65,14 @@ def registry() -> tuple[AgentSpec, ...]:
     return _REGISTRY
 
 
+def is_on_path(spec: AgentSpec) -> bool:
+    """Whether this spec's binary is resolvable on PATH."""
+    return shutil.which(spec.binary) is not None
+
+
 def available_specs() -> list[AgentSpec]:
     """Specs whose binary is resolvable on PATH, in registry order."""
-    return [spec for spec in _REGISTRY if shutil.which(spec.binary) is not None]
+    return [spec for spec in _REGISTRY if is_on_path(spec)]
 
 
 def spec_by_name(name: str) -> Optional[AgentSpec]:

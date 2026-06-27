@@ -4,10 +4,7 @@ import json
 import uuid
 from typing import Optional
 
-from google import genai
-from google.genai import types
-
-from yunaki_skills.config import get
+from yunaki_skills import skill_llm
 from yunaki_skills.interfaces import (
     EvalResult,
     Granularity,
@@ -67,16 +64,50 @@ Rules:
 Respond with ONLY the JSON object, no markdown formatting, no explanation."""
 
 
-class SkillExtractor(SkillExtractor):
-    """Gemini-powered skill extraction from traces."""
+CONTRASTIVE_PROMPT = """You are a skill extraction engine for a coding agent. You are given TWO execution \
+traces for the SAME task: one that PASSED and one that FAILED. Your job is to extract the single most \
+valuable reusable skill that captures the DIFFERENCE — what the passing run did right that the failing \
+run did not. This contrast is high signal: focus on the specific decision, pattern, or step that \
+separated success from failure.
 
-    def __init__(self):
-        api_key = get("GEMINI_API_KEY")
-        self._client = genai.Client(api_key=api_key)
-        self._model = "gemini-2.5-flash"
+TASK DESCRIPTION:
+{task_description}
+
+PASSING TRACE (score {pass_score}/100):
+{pass_trace}
+
+FAILING TRACE (score {fail_score}/100):
+{fail_trace}
+
+Extract a reusable skill as JSON with this exact schema:
+{{
+  "id": "skill_<short_snake_case_name>",
+  "title": "<human-readable title>",
+  "granularity": "<task-level or event-driven>",
+  "version": "0.1",
+  "score": 60.0,
+  "trigger": {{
+    "type": "<semantic for task-level, pattern for event-driven>",
+    "patterns": ["<regex>"],
+    "query": "<semantic search query>",
+    "match_on": "<task_description or observation or error>"
+  }},
+  "when_to_apply": "<when should this skill be applied?>",
+  "instructions": ["<step 1>", "<step 2>", ...]
+}}
+
+Rules:
+- id must start with "skill_" and use snake_case
+- instructions must encode the winning behavior the failing run lacked — be concrete and actionable
+- Prefer task-level/semantic unless the difference is clearly an error the failing run hit
+- Respond with ONLY the JSON object, no markdown formatting, no explanation."""
+
+
+class SkillExtractor(SkillExtractor):
+    """Skill extraction from traces, via the configured skill-model backend."""
 
     def extract(self, task_description: str, trace: str, eval_result: EvalResult) -> Optional[Skill]:
-        """Analyze a failed task execution and extract a reusable skill.
+        """Analyze a single task execution and extract a reusable skill.
         Returns None if no skill can be extracted."""
         prompt = EXTRACTION_PROMPT.format(
             task_description=task_description,
@@ -88,59 +119,69 @@ class SkillExtractor(SkillExtractor):
             tasks_total=eval_result.tasks_total,
             test_output=eval_result.test_output[:2000],
         )
+        return self._extract_from_prompt(prompt, task_description)
 
+    def extract_contrastive(
+        self,
+        task_description: str,
+        pass_trace: str,
+        fail_trace: str,
+        pass_eval: EvalResult,
+        fail_eval: EvalResult,
+    ) -> Optional[Skill]:
+        """Extract the skill that captures the DIFFERENCE between a passing and a
+        failing rollout of the same task. Higher signal than a single trace.
+        Returns None if no skill can be extracted."""
+        prompt = CONTRASTIVE_PROMPT.format(
+            task_description=task_description,
+            pass_score=pass_eval.score,
+            fail_score=fail_eval.score,
+            pass_trace=pass_trace[:6000],
+            fail_trace=fail_trace[:6000],
+        )
+        return self._extract_from_prompt(prompt, task_description)
+
+    def _extract_from_prompt(self, prompt: str, task_description: str) -> Optional[Skill]:
+        """Run the skill-model on `prompt` and build a Skill from its JSON."""
         try:
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.3,
-                    response_mime_type="application/json",
-                ),
-            )
-
-            text = response.text.strip()
+            text = (skill_llm.complete_json(prompt) or "").strip()
             if not text:
                 return None
-
-            # Parse the JSON response
             data = json.loads(text)
-
-            # Build the Skill object from parsed JSON
-            trigger_data = data.get("trigger", {})
-            trigger = Trigger(
-                type=TriggerType(trigger_data.get("type", "semantic")),
-                patterns=trigger_data.get("patterns", []),
-                query=trigger_data.get("query", ""),
-                match_on=TriggerMatchOn(trigger_data.get("match_on", "task_description")),
-            )
-
-            trace_id = f"trace_{uuid.uuid4().hex[:12]}"
-
-            provenance = Provenance(
-                created_from=trace_id,
-                task=task_description,
-                iteration=1,
-                parent_skill=None,
-                merged_from=[],
-                evolved_at="",
-            )
-
-            skill = Skill(
-                id=data.get("id", f"skill_{uuid.uuid4().hex[:8]}"),
-                title=data.get("title", "Extracted Skill"),
-                granularity=Granularity(data.get("granularity", "task-level")),
-                version=data.get("version", "0.1"),
-                score=float(data.get("score", 50.0)),
-                trigger=trigger,
-                when_to_apply=data.get("when_to_apply", ""),
-                instructions=data.get("instructions", []),
-                provenance=provenance,
-            )
-
-            return skill
-
+            return self._build_skill(data, task_description)
         except (json.JSONDecodeError, ValueError, KeyError, Exception) as e:
-            # If extraction fails for any reason, return None
+            # If extraction fails for any reason, return None (fail soft).
             print(f"[SkillExtractor] Failed to extract skill: {e}")
             return None
+
+    @staticmethod
+    def _build_skill(data: dict, task_description: str) -> Skill:
+        """Construct a Skill from a parsed model JSON object."""
+        trigger_data = data.get("trigger", {})
+        trigger = Trigger(
+            type=TriggerType(trigger_data.get("type", "semantic")),
+            patterns=trigger_data.get("patterns", []),
+            query=trigger_data.get("query", ""),
+            match_on=TriggerMatchOn(trigger_data.get("match_on", "task_description")),
+        )
+
+        provenance = Provenance(
+            created_from=f"trace_{uuid.uuid4().hex[:12]}",
+            task=task_description,
+            iteration=1,
+            parent_skill=None,
+            merged_from=[],
+            evolved_at="",
+        )
+
+        return Skill(
+            id=data.get("id", f"skill_{uuid.uuid4().hex[:8]}"),
+            title=data.get("title", "Extracted Skill"),
+            granularity=Granularity(data.get("granularity", "task-level")),
+            version=data.get("version", "0.1"),
+            score=float(data.get("score", 50.0)),
+            trigger=trigger,
+            when_to_apply=data.get("when_to_apply", ""),
+            instructions=data.get("instructions", []),
+            provenance=provenance,
+        )

@@ -10,7 +10,7 @@ from typing import Optional
 from pymongo import MongoClient
 
 from yunaki_skills import governance
-from yunaki_skills.config import build_mongo_uri
+from yunaki_skills.config import build_mongo_uri, get
 from yunaki_skills.interfaces import (
     Granularity,
     Skill,
@@ -21,6 +21,19 @@ from yunaki_skills.interfaces import (
 from yunaki_skills.redis_cache import EmbeddingCache
 
 logger = logging.getLogger(__name__)
+
+
+def _env_float(key: str, default: float) -> float:
+    """Read a float-valued env var, falling back to default on missing/invalid."""
+    raw = get(key, "")
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid float for %s=%r; using default %s", key, raw, default)
+        return default
+
 
 # Embedding dimensionality. Matches all-MiniLM-L6-v2 so stored vectors stay
 # comparable whether they came from the model or the deterministic fallback.
@@ -261,6 +274,65 @@ class SkillBank(SkillBank):
         result = self._skills.update_one(scope, {"$inc": inc})
         return result.matched_count > 0
 
+    def drop(self, skill_id: str, reason: str = "") -> bool:
+        """Soft-delete a skill: archive to history, then remove from the live bank.
+
+        Recoverable via ``skills_history``. Also removes the stored embedding.
+        Returns False if the skill is not found in this namespace.
+        """
+        scope = {"id": skill_id, **self._namespace_filter()}
+        old_doc = self._skills.find_one(scope)
+        if old_doc is None:
+            return False
+
+        archive_doc = dict(old_doc)
+        archive_doc.pop("_id", None)
+        archive_doc["_archived_at"] = self._now_iso()
+        archive_doc["_dropped"] = True
+        if reason:
+            archive_doc["_drop_reason"] = reason
+        self._history.insert_one(archive_doc)
+
+        self._skills.delete_one(scope)
+        self._embeddings_col.delete_one({"skill_id": skill_id, "org_id": self._org_id})
+        return True
+
+    def merge(self, source_ids: list[str], merged: Skill) -> Optional[str]:
+        """Consolidate several skills into one.
+
+        Archives and drops the sources, sums their usage/success counts into the
+        merged skill (so learning signal is preserved, not reset), and records
+        ``provenance.merged_from``. The merged skill may reuse one source's id
+        (kept and updated) or introduce a new id (added). Returns the merged
+        skill id, or None if none of the sources exist in this namespace.
+        """
+        sources = [s for s in (self.get(sid) for sid in source_ids) if s is not None]
+        if not sources:
+            return None
+
+        total_usage = merged.usage_count + sum(s.usage_count for s in sources)
+        total_success = merged.success_count + sum(s.success_count for s in sources)
+        merged = merged.model_copy(
+            update={
+                "usage_count": total_usage,
+                "success_count": total_success,
+                "provenance": merged.provenance.model_copy(
+                    update={"merged_from": [s.id for s in sources]}
+                ),
+            }
+        )
+
+        if self.get(merged.id) is not None:
+            self.update(merged.id, merged)
+        else:
+            self.add(merged)
+
+        for s in sources:
+            if s.id != merged.id:
+                self.drop(s.id, reason=f"merged into {merged.id}")
+
+        return merged.id
+
     def publish_skill(self, skill_id: str) -> bool:
         """Publish a skill to the marketplace (visibility -> 'public')."""
         scope = {"id": skill_id, **self._namespace_filter()}
@@ -323,10 +395,33 @@ class SkillBank(SkillBank):
             embed_text = f"{skill.title} {skill.when_to_apply} {skill.trigger.query}"
             corpus_vec = self._compute_embedding(embed_text)
             sim = self._cosine_similarity(query_vec, corpus_vec)
-            scored.append((sim, skill))
+            scored.append((self._rank_value(sim, skill), skill))
 
         scored.sort(key=lambda x: x[0], reverse=True)
         return [skill for _, skill in scored[:top_k]]
+
+    @staticmethod
+    def _rank_value(sim: float, skill: Skill) -> float:
+        """Combine similarity with skill quality for retrieval ranking.
+
+        rank = w_sim*sim + w_score*(score/100) + w_rate*success_rate
+
+        Unproven skills (0 usage) get a neutral 0.5 success prior so they are
+        not starved before they have evidence. With the default weights, skills
+        of equal score and usage rank purely by similarity (today's behavior),
+        so proven, higher-scoring skills only win ties. All weights are
+        env-tunable (YUNAKI_RANK_W_SIM / _W_SCORE / _W_RATE).
+        """
+        w_sim = _env_float("YUNAKI_RANK_W_SIM", 1.0)
+        w_score = _env_float("YUNAKI_RANK_W_SCORE", 0.15)
+        w_rate = _env_float("YUNAKI_RANK_W_RATE", 0.15)
+
+        score_norm = max(0.0, min(skill.score / 100.0, 1.0))
+        if skill.usage_count > 0:
+            success_rate = skill.success_count / skill.usage_count
+        else:
+            success_rate = 0.5  # neutral prior for unproven skills
+        return w_sim * sim + w_score * score_norm + w_rate * success_rate
 
     def search_pattern(self, text: str) -> list[Skill]:
         """Pattern match for event-driven skills. Regex on text."""

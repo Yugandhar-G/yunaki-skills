@@ -215,14 +215,25 @@ class SkillRetriever:
 
 
 class EvalResult(BaseModel):
-    """Result of evaluating an agent's output."""
+    """Result of evaluating an agent's output.
+
+    `passed` and `score` are the deterministic pytest signal and are the ONLY
+    fields the loop gates on. The composite_* fields are an optional LLM-judge
+    overlay (see reward.RewardComposer): advisory signal that never flips a
+    pytest failure into a pass.
+    """
 
     passed: bool
-    score: float  # 0-100
+    score: float  # 0-100 (deterministic pytest pass fraction)
     details: str = ""  # human-readable explanation
     test_output: str = ""  # raw test/linter output
     tasks_passed: int = 0
     tasks_total: int = 0
+
+    # Optional composite-reward overlay (None unless YUNAKI_COMPOSITE_REWARD on).
+    composite_score: Optional[float] = None  # 0-100, exec×align + quality
+    align_score: Optional[float] = None  # 0-100, judge: does code address the task
+    quality_score: Optional[float] = None  # 0-100, judge weighted overall
 
 
 # ─── Eval Scorer Interface ─────────────────────────────────────────────────
