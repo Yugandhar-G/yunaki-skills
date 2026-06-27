@@ -265,13 +265,28 @@ class TaskResult(BaseModel):
     """Complete result of a task run through the evolution loop."""
 
     task_description: str
-    score_before: float  # score before skill injection
+    score_before: float  # score before any agent run (pytest on empty/existing code)
+    score_control: Optional[float] = None  # agent WITHOUT skills — isolates skill effect
     score_after: float  # score after skill injection
     skills_used: list[str]  # skill IDs that were injected
     skills_created: list[str]  # skill IDs that were extracted
     skills_evolved: list[str]  # skill IDs that were evolved
     iterations: int = 0
     trace: str = ""
+
+    @property
+    def skill_delta(self) -> Optional[float]:
+        """The ONLY number that proves the thesis: how much skills helped.
+
+        = score_after - score_control
+
+        A positive skill_delta means skills caused improvement BEYOND what
+        the agent achieves alone.  This is the control-arm measurement that
+        prevents conflating "the agent can code" with "skills helped."
+        """
+        if self.score_control is None:
+            return None
+        return round(self.score_after - self.score_control, 1)
 
 
 # ─── Task Runner Interface ─────────────────────────────────────────────────

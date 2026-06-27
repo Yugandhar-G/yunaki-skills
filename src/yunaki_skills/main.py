@@ -329,49 +329,34 @@ async def api_trigger_run(req: RunRequest):
             run_data = result.model_dump()
             run_data["timestamp"] = datetime.utcnow().isoformat()
             run_data["status"] = "completed"
+            # Expose skill_delta — the only number that proves the thesis
+            run_data["skill_delta"] = result.skill_delta
             return run_data
         except Exception as e:
-            print(f"[WARN] TaskRunner failed: {e}. Using stub run.")
+            # FAIL LOUD: Do NOT silently fall through to a fabricated stub.
+            # The old code used to emit random.uniform scores here — that
+            # was disqualifiable dishonesty.  Now we surface the error.
+            logger.exception("TaskRunner failed — refusing to fabricate scores")
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"TaskRunner failed: {e}. "
+                    "No simulated fallback — scores must come from real runs. "
+                    "Check that GEMINI_API_KEY and MONGODB_URI are set."
+                ),
+            )
 
-    # ── Stub run: simulate a run with score improvement ──
-    _load_seed_skills_to_stubs()
-    import random
-
-    score_before = random.uniform(10, 35)
-    score_after = min(score_before + random.uniform(30, 55), 100)
-    iterations = req.max_iterations
-
-    # Pick some skills
-    all_skill_ids = list(_stub_skills.keys())
-    used = random.sample(all_skill_ids, min(2, len(all_skill_ids)))
-    created = [all_skill_ids[0]] if random.random() > 0.3 else []
-    evolved = [all_skill_ids[1]] if random.random() > 0.4 else []
-
-    # Build simulated iteration-by-iteration trace
-    trace_lines = []
-    for i in range(1, iterations + 1):
-        frac = i / iterations
-        score = score_before + (score_after - score_before) * frac
-        trace_lines.append(
-            f"Iteration {i}/{iterations}: score={score:.0f}. "
-            f"{'Skills injected: ' + ', '.join(used[:i]) if i > 1 else 'No skills yet — baseline run.'}"
-        )
-    trace = "\n".join(trace_lines)
-
-    run_data = {
-        "task_description": req.task_description,
-        "score_before": round(score_before, 1),
-        "score_after": round(score_after, 1),
-        "skills_used": used,
-        "skills_created": created,
-        "skills_evolved": evolved,
-        "iterations": iterations,
-        "trace": trace,
-        "timestamp": datetime.utcnow().isoformat(),
-        "status": "completed",
-    }
-    _add_run(run_data)
-    return run_data
+    # No real TaskRunner available at all — fail explicitly
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "No TaskRunner available. Self-evolving skills require a real "
+            "LLM backend (Gemini/Antigravity) and MongoDB. Set GEMINI_API_KEY "
+            "and MONGODB_URI to enable live runs. The simulated path that "
+            "previously fabricated scores has been removed — honest failure "
+            "is better than fake success."
+        ),
+    )
 
 
 @app.get("/api/runs")

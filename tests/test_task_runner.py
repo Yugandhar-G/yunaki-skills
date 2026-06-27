@@ -24,7 +24,7 @@ def components():
 
 
 def build_runner(monkeypatch, components):
-    monkeypatch.delenv("YUNAKI_DEMO_MODE", raising=False)
+    monkeypatch.delenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", raising=False)
     monkeypatch.setattr(tr, "SkillBank", lambda *a, **k: components["bank"])
     monkeypatch.setattr(tr, "SkillExtractor", lambda: components["extractor"])
     monkeypatch.setattr(tr, "SkillEvolver", lambda: components["evolver"])
@@ -48,8 +48,8 @@ def test_already_passing_short_circuits(monkeypatch, components, eval_pass):
 
 
 def test_learn_on_success_when_passes_first_iter(monkeypatch, components, eval_fail, eval_pass):
-    # baseline fails, then iteration 1 passes
-    components["scorer"].evaluate.side_effect = [eval_fail, eval_pass]
+    # baseline fails, control arm fails, then iteration 1 passes
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_pass]
     components["retriever"].retrieve_for_task.return_value = []
     components["retriever"].check_triggers.return_value = []
     components["agent"].run_task.return_value = "winning trace"
@@ -69,8 +69,8 @@ def test_learn_on_success_when_passes_first_iter(monkeypatch, components, eval_f
 
 
 def test_extract_new_skill_on_failure_then_pass(monkeypatch, components, eval_fail, eval_pass):
-    # baseline fail, iter1 fail -> extract, iter2 pass
-    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_pass]
+    # baseline fail, control arm fail, iter1 fail -> extract, iter2 pass
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_fail, eval_pass]
     components["retriever"].retrieve_for_task.return_value = []
     components["retriever"].check_triggers.return_value = []
     components["agent"].run_task.return_value = "trace"
@@ -89,8 +89,8 @@ def test_extract_new_skill_on_failure_then_pass(monkeypatch, components, eval_fa
 
 
 def test_evolve_skill_on_repeated_failure(monkeypatch, components, eval_fail):
-    # baseline fail, iter1 fail -> extract, iter2 fail -> evolve
-    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_fail]
+    # baseline fail, control arm fail, iter1 fail -> extract, iter2 fail -> evolve
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_fail, eval_fail]
     components["retriever"].retrieve_for_task.return_value = []
     components["retriever"].check_triggers.return_value = []
     components["agent"].run_task.return_value = "trace"
@@ -114,7 +114,8 @@ def test_evolve_skill_on_repeated_failure(monkeypatch, components, eval_fail):
 
 
 def test_event_triggered_skills_rerun_agent(monkeypatch, components, eval_fail, eval_pass):
-    components["scorer"].evaluate.side_effect = [eval_fail, eval_pass]
+    # baseline fail, control arm fail, then iteration 1 passes
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_pass]
     components["retriever"].retrieve_for_task.return_value = []
     triggered = make_task_skill("skill_event")
     components["retriever"].check_triggers.return_value = [triggered]
@@ -125,14 +126,16 @@ def test_event_triggered_skills_rerun_agent(monkeypatch, components, eval_fail, 
     runner = build_runner(monkeypatch, components)
     result = runner.run("task", max_iterations=3)
 
-    # Agent runs once for the iteration, then again with triggered skills.
-    assert components["agent"].run_task.call_count == 2
+    # Control arm runs once (no skills), then the iteration runs, then again
+    # with triggered skills: 3 total agent invocations.
+    assert components["agent"].run_task.call_count == 3
     assert "skill_event" in result.skills_used
 
 
 def test_retrieved_skills_recorded_as_used(monkeypatch, components, eval_fail, eval_pass):
     retrieved = make_task_skill("skill_retrieved")
-    components["scorer"].evaluate.side_effect = [eval_fail, eval_pass]
+    # baseline fail, control arm fail, then iteration 1 passes
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_pass]
     components["retriever"].retrieve_for_task.return_value = [retrieved]
     components["retriever"].check_triggers.return_value = []
     components["agent"].run_task.return_value = "trace"
@@ -159,14 +162,15 @@ def test_agent_exception_does_not_crash_loop(monkeypatch, components, eval_fail)
 
 
 def test_demo_handicap_clause_appends_constraint(monkeypatch):
-    monkeypatch.setenv("YUNAKI_DEMO_MODE", "1")
+    monkeypatch.setenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", "1")
     monkeypatch.setenv("YUNAKI_DEMO_HANDICAP", "1,2")
     clause1 = tr._demo_handicap_clause(1)
     clause3 = tr._demo_handicap_clause(3)
     assert "first 1 item" in clause1
+    assert "NOT A REAL MEASUREMENT" in clause1  # Must be unmistakably labeled
     assert clause3 == ""  # past the schedule
 
 
 def test_demo_handicap_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("YUNAKI_DEMO_MODE", raising=False)
+    monkeypatch.delenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", raising=False)
     assert tr._demo_handicap_clause(1) == ""

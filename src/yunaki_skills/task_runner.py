@@ -52,18 +52,25 @@ def _truthy(value: str) -> bool:
 
 
 def _demo_handicap_clause(iteration: int) -> str:
-    """Staged demo constraint appended to the agent's task for early iterations.
+    """Staged demo constraint — DISABLED by default.
 
-    Enabled by YUNAKI_DEMO_MODE. The agent is told to implement only the first
-    K required items (in listed order) on a given pass, where K comes from
-    YUNAKI_DEMO_HANDICAP (default "1,2" => iter1 does 1, iter2 does 2, iter3+
-    unconstrained). This forces genuine sub-threshold scores on early passes so
-    the extract -> evolve -> pass cycle is exercised live, instead of the agent
-    one-shotting the whole task and skipping the learning paths.
+    **WARNING**: This function deliberately degrades the agent's output to
+    produce a rising improvement curve. The curve measures the handicap
+    being lifted, NOT the skills working.  It is a SCRIPTED WALKTHROUGH,
+    not evidence of self-evolution.
 
-    Returns "" when demo mode is off or the iteration is past the schedule.
+    It must NEVER be enabled for any result that claims to measure skill
+    effectiveness.  It exists solely for choreographed live demos where
+    the audience is told explicitly that the sequence is staged.
+
+    To enable (ONLY for scripted walkthroughs):
+      YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH=1
+      YUNAKI_DEMO_HANDICAP=1,2  (iter1 does 1 item, iter2 does 2, iter3+ unconstrained)
+
+    The env var name is intentionally long and self-documenting so that
+    nobody enables it by accident.
     """
-    if not _truthy(os.environ.get("YUNAKI_DEMO_MODE", "")):
+    if not _truthy(os.environ.get("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", "")):
         return ""
 
     raw = os.environ.get("YUNAKI_DEMO_HANDICAP", "1,2")
@@ -77,11 +84,14 @@ def _demo_handicap_clause(iteration: int) -> str:
 
     k = schedule[iteration - 1]
     return (
-        "\n\n[STAGED DEMO CONSTRAINT] The task above lists several required "
+        "\n\n[STAGED WALKTHROUGH CONSTRAINT — NOT A REAL MEASUREMENT] "
+        "The task above lists several required "
         f"items. In THIS pass, implement ONLY the first {k} item(s) in "
         "the exact order they are listed in the task. Do NOT add the remaining "
         "items — leave them entirely unimplemented. "
-        "This staging is intentional; a later pass will add the rest."
+        "This staging is intentional; a later pass will add the rest. "
+        "NOTE: Any improvement curve from this run is the constraint being "
+        "lifted, not evidence that skills caused the improvement."
     )
 
 
@@ -190,6 +200,7 @@ class TaskRunner(ITaskRunner):
                 test_command=test_command,
                 max_iterations=max_iterations,
                 progress=progress,
+                code_snapshot=code_snapshot,
             )
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
@@ -201,6 +212,7 @@ class TaskRunner(ITaskRunner):
         test_command: Optional[list[str]],
         max_iterations: int,
         progress: Optional[Callable[[dict], None]],
+        code_snapshot: str = "",
     ) -> TaskResult:
         logger.info(
             "TaskRunner starting: task=%r  org_id=%s  max_iterations=%d",
@@ -228,8 +240,8 @@ class TaskRunner(ITaskRunner):
                 workspace=workspace,
             )
 
-        # ─── Step 1: Baseline score (no skills) ─────────────────────────
-        print("\n[1] Running baseline evaluation (no skills)...")
+        # ─── Step 1: Baseline score (no agent at all) ──────────────────────
+        print("\n[1] Running baseline evaluation (no agent, no skills)...")
         baseline_eval = _evaluate()
         score_before = baseline_eval.score
         print(f"  Baseline: {baseline_eval.tasks_passed}/{baseline_eval.tasks_total} passed = {score_before:.0f}%")
@@ -250,6 +262,7 @@ class TaskRunner(ITaskRunner):
         skills_used: list[str] = []
         skills_created: list[str] = []
         skills_evolved: list[str] = []
+        score_control: Optional[float] = None
         current_score = score_before
         full_trace = ""
         iterations = 0
@@ -257,7 +270,7 @@ class TaskRunner(ITaskRunner):
         # than spawning near-duplicate siblings.
         last_created_skill_id: Optional[str] = None
 
-        # If already passing, short-circuit
+        # If already passing, short-circuit (skip control arm too — nothing to prove)
         if baseline_eval.passed:
             logger.info("Task already passing at baseline — done")
             print("  Already passing! No skills needed.")
@@ -276,6 +289,7 @@ class TaskRunner(ITaskRunner):
             return TaskResult(
                 task_description=task_description,
                 score_before=score_before,
+                score_control=None,
                 score_after=score_before,
                 skills_used=skills_used,
                 skills_created=skills_created,
@@ -284,8 +298,49 @@ class TaskRunner(ITaskRunner):
                 trace="Already passing at baseline",
             )
 
-        # ─── Step 2: Retrieve relevant skills ────────────────────────────
-        print("\n[2] Retrieving relevant skills...")
+        # ─── Step 2: CONTROL ARM — agent WITHOUT skills ─────────────────
+        # This is the number that isolates the skill effect.  Without it,
+        # score_after - score_before conflates "the agent can code" with
+        # "skills helped."  The control arm measures what the agent does
+        # on its own, so skill_delta = score_after - score_control
+        # measures ONLY the skill contribution.
+        try:
+            print("\n[2] Control arm: running agent WITHOUT skills...")
+            control_trace = self._agent.run_task(
+                task_description=task_description,
+                skills=[],  # <-- NO SKILLS
+                repo_path=workspace,
+            )
+            control_eval = _evaluate()
+            score_control = control_eval.score
+            print(
+                f"  Control (no skills): {control_eval.tasks_passed}/{control_eval.tasks_total}"
+                f" = {score_control:.0f}%"
+            )
+            self._emit(
+                progress,
+                {
+                    "type": "eval_result",
+                    "iteration": 0,
+                    "phase": "control_no_skills",
+                    "score": score_control,
+                    "passed": control_eval.passed,
+                    "tasks_passed": control_eval.tasks_passed,
+                    "tasks_total": control_eval.tasks_total,
+                },
+            )
+            # Reset workspace to pre-control state for the skilled run
+            # (so the skilled run starts from the same baseline, not from
+            # the control arm's output)
+            if code_snapshot:
+                with open(os.path.join(workspace, _SNAPSHOT_FILENAME), "w") as f:
+                    f.write(code_snapshot)
+        except Exception as e:
+            logger.warning("Control arm failed (agent without skills): %s", e)
+            print(f"  [WARN] Control arm failed: {e}. skill_delta will be None.")
+
+        # ─── Step 3: Retrieve relevant skills ────────────────────────────
+        print("\n[3] Retrieving relevant skills...")
         task_skills = self._retriever.retrieve_for_task(task_description)
         print(f"  Found {len(task_skills)} task-level skills: {[s.id for s in task_skills]}")
         for s in task_skills:
@@ -306,11 +361,11 @@ class TaskRunner(ITaskRunner):
                 },
             )
 
-            # ─── Step 3: Run agent with injected skills ──────────────────
+            # ─── Step 4: Run agent with injected skills ──────────────────
             iter_task = task_description + _demo_handicap_clause(iteration)
             if iter_task != task_description:
                 print(f"  [demo] Staged constraint active for iteration {iteration}")
-            print(f"  [3] Running agent with {len(task_skills)} skills...")
+            print(f"  [4] Running agent with {len(task_skills)} skills...")
             # Skills actually applied this iteration (for usage accounting).
             applied_skills = list(task_skills)
             try:
@@ -348,8 +403,8 @@ class TaskRunner(ITaskRunner):
             except Exception as e:
                 logger.warning("Trigger check failed: %s", e)
 
-            # ─── Step 4: Evaluate the result ─────────────────────────────
-            print(f"  [4] Evaluating iteration {iteration}...")
+            # ─── Step 5: Evaluate the result ─────────────────────────────
+            print(f"  [5] Evaluating iteration {iteration}...")
             eval_result = _evaluate()
             current_score = eval_result.score
             print(f"  Result: {eval_result.tasks_passed}/{eval_result.tasks_total} = {current_score:.0f}%")
@@ -366,12 +421,12 @@ class TaskRunner(ITaskRunner):
                 },
             )
 
-            # ─── Step 5: Record usage on the injected skills ─────────────
+            # ─── Step 6: Record usage on the injected skills ─────────────
             # Self-evolution signal — every applied skill gets a usage tick, and
             # a success tick when this iteration passed.
             self._record_usage(applied_skills, success=eval_result.passed)
 
-            # ─── Step 6: If passed, we're done ───────────────────────────
+            # ─── Step 7: If passed, we're done ───────────────────────────
             if eval_result.passed:
                 print(f"  ✅ PASSED at iteration {iteration}!")
                 # Learn-on-success safety net: if this run passed without ever
@@ -401,8 +456,8 @@ class TaskRunner(ITaskRunner):
                         )
                 break
 
-            # ─── Step 7: Failed — learn from it ──────────────────────────
-            print("  [5] Learning from failure...")
+            # ─── Step 8: Failed — learn from it ──────────────────────────
+            print("  [8] Learning from failure...")
 
             # If we already created a skill earlier in THIS run and still
             # failed, the skill is incomplete — evolve it on the new evidence
@@ -553,6 +608,7 @@ class TaskRunner(ITaskRunner):
         result = TaskResult(
             task_description=task_description,
             score_before=score_before,
+            score_control=score_control,
             score_after=score_after,
             skills_used=skills_used,
             skills_created=skills_created,

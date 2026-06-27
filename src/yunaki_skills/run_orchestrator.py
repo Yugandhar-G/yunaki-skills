@@ -187,31 +187,47 @@ async def _run_stub(
     list_skills: Callable[[], list[dict[str, Any]]],
     add_run: Callable[[dict[str, Any]], None],
 ) -> dict[str, Any]:
+    """Simulated run — NO SCORES ARE FABRICATED.
+
+    This path exists ONLY for UI/UX testing (dashboard layout, WebSocket
+    streaming, event sequencing). It deliberately does NOT produce
+    score_before / score_after numbers because there is no real agent run
+    to measure. Any number we emit would be fake, and fake numbers are
+    worse than no numbers.
+
+    The dashboard receives a single event with simulated=True so it can
+    render a clear "SIMULATED — NO LIVE RUN" banner.  If a judge or user
+    sees this run, they know it is not evidence of self-evolution.
+    """
     skills = list_skills()
     title_for = _title_lookup(skills)
     all_ids = [s.get("id") for s in skills if s.get("id")]
 
-    score_before = round(random.uniform(10, 35), 1)
-    score_after = round(min(score_before + random.uniform(30, 55), 100), 1)
+    # We still pick skills to exercise the event pipeline, but we
+    # explicitly do NOT assign scores.
     used = random.sample(all_ids, min(2, len(all_ids))) if all_ids else []
-    created = [all_ids[0]] if all_ids and random.random() > 0.3 else []
-    evolved = [all_ids[1]] if len(all_ids) > 1 and random.random() > 0.4 else []
+    created = [all_ids[0]] if all_ids and random.random() > 0.5 else []
+    evolved = [all_ids[1]] if len(all_ids) > 1 and random.random() > 0.5 else []
 
     await _emit_skill_events(broker, run_id, "retrieved", used, title_for)
 
-    trace_lines: list[str] = []
     for i in range(1, max_iterations + 1):
-        frac = i / max_iterations
-        score = round(score_before + (score_after - score_before) * frac, 1)
-        msg = "No skills yet — baseline run." if i == 1 else "Skills injected: " + ", ".join(used[:i])
-        line = f"Iteration {i}/{max_iterations}: score={score:.0f}. {msg}"
-        trace_lines.append(line)
-        await broker.publish(run_id, {"type": "agent_output", "chunk": line + "\n"})
+        msg = (
+            f"[SIMULATED — NO LIVE RUN] Iteration {i}/{max_iterations}. "
+            "No real agent execution; scores are unavailable."
+        )
+        await broker.publish(run_id, {"type": "agent_output", "chunk": msg + "\n"})
         await broker.publish(
             run_id,
-            {"type": "iteration", "iteration": i, "max_iterations": max_iterations, "score": score, "message": msg},
+            {
+                "type": "iteration",
+                "iteration": i,
+                "max_iterations": max_iterations,
+                "score": None,  # deliberately None, not a fabricated number
+                "simulated": True,
+                "message": msg,
+            },
         )
-        await broker.publish(run_id, {"type": "score_update", "score": score})
         await asyncio.sleep(_ITERATION_DELAY_S)
 
     await _emit_skill_events(broker, run_id, "created", created, title_for)
@@ -219,15 +235,16 @@ async def _run_stub(
 
     record = {
         "task_description": task,
-        "score_before": score_before,
-        "score_after": score_after,
+        "score_before": None,
+        "score_after": None,
         "skills_used": used,
         "skills_created": created,
         "skills_evolved": evolved,
         "iterations": max_iterations,
-        "trace": "\n".join(trace_lines),
+        "trace": "[SIMULATED — NO LIVE RUN] No real agent was executed.",
         "timestamp": datetime.utcnow().isoformat(),
-        "status": "completed",
+        "status": "simulated",
+        "simulated": True,
     }
     add_run(record)
     return record

@@ -65,19 +65,23 @@ def test_stats_shape(client):
 
 
 def test_trigger_run_returns_scores(client, stub_runner):
+    """Without a real TaskRunner (no GEMINI_API_KEY), the API must fail
+    honestly with 503 — NOT fabricate scores."""
     resp = client.post("/api/run", json={"task_description": "do a thing", "max_iterations": 2})
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     body = resp.json()
-    assert "score_before" in body
-    assert "score_after" in body
-    assert body["status"] == "completed"
+    assert "detail" in body
+    assert "No TaskRunner available" in body["detail"] or "TaskRunner failed" in body["detail"]
 
 
 def test_run_is_recorded(client, stub_runner):
+    """Run endpoint correctly rejects when no real runner is available.
+    (The old stub path that fabricated scores has been removed.)"""
     before = len(client.get("/api/runs").json())
-    client.post("/api/run", json={"task_description": "another task"})
+    resp = client.post("/api/run", json={"task_description": "another task"})
+    assert resp.status_code == 503
     after = len(client.get("/api/runs").json())
-    assert after >= before + 1
+    assert after == before  # no fabricated run added
 
 
 def test_root_serves_something(client):
