@@ -23,9 +23,7 @@ def fake_sdk(monkeypatch):
 
 
 def _only(monkeypatch, *available):
-    monkeypatch.setattr(
-        agent_specs.shutil, "which", lambda binary: "/x" if binary in available else None
-    )
+    monkeypatch.setattr(agent_specs.shutil, "which", lambda binary: "/x" if binary in available else None)
 
 
 def test_override_selects_named_backend(monkeypatch, fake_sdk):

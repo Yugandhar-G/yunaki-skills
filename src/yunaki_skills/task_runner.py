@@ -349,8 +349,7 @@ class TaskRunner(ITaskRunner):
             control_eval = _evaluate()
             score_control = control_eval.score
             print(
-                f"  Control (no skills): {control_eval.tasks_passed}/{control_eval.tasks_total}"
-                f" = {score_control:.0f}%"
+                f"  Control (no skills): {control_eval.tasks_passed}/{control_eval.tasks_total} = {score_control:.0f}%"
             )
             self._emit(
                 progress,

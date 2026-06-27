@@ -316,9 +316,7 @@ class SkillBank(SkillBank):
             update={
                 "usage_count": total_usage,
                 "success_count": total_success,
-                "provenance": merged.provenance.model_copy(
-                    update={"merged_from": [s.id for s in sources]}
-                ),
+                "provenance": merged.provenance.model_copy(update={"merged_from": [s.id for s in sources]}),
             }
         )
 

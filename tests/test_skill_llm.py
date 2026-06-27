@@ -30,9 +30,7 @@ def test_model_override_routes_to_sdk(monkeypatch):
 
     monkeypatch.setattr(skill_llm, "_complete_via_sdk", fake_sdk)
     # CLI must NOT be consulted when the model is pinned.
-    monkeypatch.setattr(
-        skill_llm, "_complete_via_cli", lambda *a, **k: pytest_fail()
-    )
+    monkeypatch.setattr(skill_llm, "_complete_via_cli", lambda *a, **k: pytest_fail())
 
     out = skill_llm.complete_json("prompt")
     assert out == '{"ok": true}'
