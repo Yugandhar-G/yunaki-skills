@@ -1,0 +1,14 @@
+[
+  "Verify all user-supplied inputs are validated for type, format, range, and length, and properly sanitized or parameterized to prevent injection vulnerabilities (e.g., SQL, XSS, Command).",
+  "Ensure comprehensive error handling for both external dependencies and internal logic, returning consistent and informative error responses with appropriate HTTP status codes.",
+  "Confirm sensitive data (e.g., API keys, database credentials) is managed securely via environment variables or a secrets management system, not hardcoded.",
+  "Check for proper acquisition and release of system resources (e.g., database connections, file handles, network sockets).",
+  "Verify that authentication is correctly applied to protected endpoints and that authorization logic (e.g., role-based access control) is enforced for resource access.",
+  "Ensure no sensitive data (e.g., raw passwords, password hashes, PII not required by the client) is exposed in API responses, logs, or error messages.",
+  "Confirm API endpoints adhere to RESTful principles, using appropriate HTTP methods (GET, POST, PUT, PATCH, DELETE) and status codes for their intended actions.",
+  "Evaluate for potential performance bottlenecks, such as N+1 queries, inefficient data retrieval, or excessive data transfer over the network.",
+  "Verify that sufficient logging is present for debugging, auditing, and operational monitoring, without logging sensitive information.",
+  "Check for potential race conditions or concurrency issues in shared resource access and ensure mutating operations are idempotent where appropriate.",
+  "Confirm that all third-party dependencies are up-to-date and free from known security vulnerabilities.",
+  "Ensure list endpoints support pagination, filtering, and sorting to prevent large data transfers and improve usability."
+]

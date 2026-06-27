@@ -29,9 +29,9 @@ def build_runner(monkeypatch, components):
     monkeypatch.setattr(tr, "SkillExtractor", lambda: components["extractor"])
     monkeypatch.setattr(tr, "SkillEvolver", lambda: components["evolver"])
     monkeypatch.setattr(tr, "SkillRetriever", lambda bank=None: components["retriever"])
-    monkeypatch.setattr(tr, "AntigravityClient", lambda: components["agent"])
     monkeypatch.setattr(tr, "EvalScorer", lambda: components["scorer"])
-    return tr.TaskRunner()
+    # Agent is dependency-injected via the constructor seam.
+    return tr.TaskRunner(agent=components["agent"])
 
 
 def test_already_passing_short_circuits(monkeypatch, components, eval_pass):
@@ -174,3 +174,47 @@ def test_demo_handicap_clause_appends_constraint(monkeypatch):
 def test_demo_handicap_disabled_by_default(monkeypatch):
     monkeypatch.delenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", raising=False)
     assert tr._demo_handicap_clause(1) == ""
+
+
+def test_injected_agent_is_used_over_default(monkeypatch, components, eval_fail, eval_pass):
+    """An agent passed via the DI seam must be used instead of the built default."""
+    monkeypatch.delenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", raising=False)
+    monkeypatch.setattr(tr, "SkillBank", lambda *a, **k: components["bank"])
+    monkeypatch.setattr(tr, "SkillExtractor", lambda: components["extractor"])
+    monkeypatch.setattr(tr, "SkillEvolver", lambda: components["evolver"])
+    monkeypatch.setattr(tr, "SkillRetriever", lambda bank=None: components["retriever"])
+    monkeypatch.setattr(tr, "EvalScorer", lambda: components["scorer"])
+    # The default build path must NOT be invoked when an agent is injected.
+    monkeypatch.setattr(
+        tr, "build_agent", lambda: pytest.fail("build_agent should not be called when agent is injected")
+    )
+
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_pass]
+    components["retriever"].retrieve_for_task.return_value = []
+    components["retriever"].check_triggers.return_value = []
+    components["agent"].run_task.return_value = "trace"
+    components["extractor"].extract.return_value = None
+    components["bank"].get.return_value = None
+
+    runner = tr.TaskRunner(agent=components["agent"])
+    runner.run("task", max_iterations=3)
+
+    assert components["agent"].run_task.called
+
+
+def test_default_agent_built_via_factory(monkeypatch, components):
+    """With no injected agent, TaskRunner obtains one from build_agent()."""
+    monkeypatch.setattr(tr, "SkillBank", lambda *a, **k: components["bank"])
+    monkeypatch.setattr(tr, "SkillExtractor", lambda: components["extractor"])
+    monkeypatch.setattr(tr, "SkillEvolver", lambda: components["evolver"])
+    monkeypatch.setattr(tr, "SkillRetriever", lambda bank=None: components["retriever"])
+    monkeypatch.setattr(tr, "EvalScorer", lambda: components["scorer"])
+
+    built = MagicMock(name="built_agent")
+    factory = MagicMock(name="build_agent", return_value=built)
+    monkeypatch.setattr(tr, "build_agent", factory)
+
+    runner = tr.TaskRunner()
+
+    factory.assert_called_once()
+    assert runner._agent is built

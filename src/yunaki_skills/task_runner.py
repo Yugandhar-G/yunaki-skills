@@ -26,9 +26,10 @@ import tempfile
 from typing import Callable, Optional
 
 from yunaki_skills import governance
-from yunaki_skills.antigravity_client import AntigravityClient
+from yunaki_skills.agent_factory import build_agent
 from yunaki_skills.eval_scorer import EvalScorer
 from yunaki_skills.interfaces import (
+    AgentClient,
     EvalResult,
     Skill,
     TaskResult,
@@ -98,7 +99,7 @@ def _demo_handicap_clause(iteration: int) -> str:
 class TaskRunner(ITaskRunner):
     """Orchestrates the full skill evolution loop."""
 
-    def __init__(self, org_id: Optional[str] = None):
+    def __init__(self, org_id: Optional[str] = None, agent: Optional[AgentClient] = None):
         # org_id namespaces the skill bank so each org evolves its own isolated
         # set of skills. None = the personal/global bank.
         self._org_id = org_id
@@ -106,7 +107,9 @@ class TaskRunner(ITaskRunner):
         self._extractor = SkillExtractor()
         self._evolver = SkillEvolver()
         self._retriever = SkillRetriever(bank=self._bank)
-        self._agent = AntigravityClient()
+        # The coding agent is dependency-injected. When not supplied, the factory
+        # detects an installed coding-agent CLI and falls back to the Gemini SDK.
+        self._agent = agent if agent is not None else build_agent()
         self._scorer = EvalScorer()
 
     @staticmethod
