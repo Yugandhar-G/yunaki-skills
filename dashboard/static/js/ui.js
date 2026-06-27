@@ -11,6 +11,11 @@
     animateCount(el("stat-avg-score"), stats.avg_score, { decimals: 1 });
     animateCount(el("stat-total-runs"), stats.total_runs);
     animateCount(el("stat-avg-improvement"), stats.avg_improvement, { decimals: 1, suffix: "%" });
+    // Skill contribution: avg (after - control). Only present once the backend
+    // has runs with a control arm; otherwise leave the placeholder at 0.
+    if (stats.avg_skill_delta !== null && stats.avg_skill_delta !== undefined) {
+      animateCount(el("stat-avg-skill-delta"), stats.avg_skill_delta, { decimals: 1, suffix: " pts" });
+    }
     // Mini header stats
     animateCount(el("mini-skills"), stats.total_skills);
     animateCount(el("mini-runs"), stats.total_runs);
@@ -108,13 +113,29 @@
     const d = after - before;
     const cls = d > 0.05 ? "pos" : "zero";
     const sign = d > 0 ? "+" : "";
-    return `<span class="delta-pill ${cls}">${sign}${d.toFixed(0)}</span>`;
+    return `<span class="delta-pill ${cls}" title="total Δ (vs no agent)">total Δ ${sign}${d.toFixed(0)}</span>`;
+  }
+
+  // skill Δ isolates the skill contribution: after - control. It is the only
+  // number that proves skills helped. Null control → no measurable delta.
+  function skillDeltaPill(control, after) {
+    if (control === null || control === undefined) {
+      return `<span class="delta-pill zero" title="no control arm recorded">skill Δ —</span>`;
+    }
+    const d = after - control;
+    const cls = d > 0.05 ? "pos" : d < -0.05 ? "neg" : "zero";
+    const sign = d > 0 ? "+" : "";
+    return `<span class="delta-pill ${cls}" title="skill Δ (vs agent without skills)">skill Δ ${sign}${d.toFixed(0)}</span>`;
   }
 
   function runRow(r, idx) {
     const used = (r.skills_used || []).length;
     const created = (r.skills_created || []).length;
     const evolved = (r.skills_evolved || []).length;
+    const hasControl = r.score_control !== null && r.score_control !== undefined;
+    const controlCell = hasControl
+      ? `<span class="${scoreClass(r.score_control)}">${r.score_control.toFixed(0)}</span>`
+      : `<span class="score-low">—</span>`;
     return `
       <tr data-run="${idx}">
         <td class="run-task-cell"><div class="t">${escapeHtml(truncate(r.task_description, 70))}</div></td>
@@ -122,10 +143,17 @@
           <span class="score-flow">
             <span class="score-low">${r.score_before.toFixed(0)}</span>
             <span class="arrow">→</span>
+            ${controlCell}
+            <span class="arrow">→</span>
             <span class="${scoreClass(r.score_after)}">${r.score_after.toFixed(0)}</span>
           </span>
         </td>
-        <td>${deltaPill(r.score_before, r.score_after)}</td>
+        <td>
+          <div class="delta-cell">
+            ${skillDeltaPill(hasControl ? r.score_control : null, r.score_after)}
+            ${deltaPill(r.score_before, r.score_after)}
+          </div>
+        </td>
         <td>${r.iterations}</td>
         <td>
           <div class="skill-count-cell">

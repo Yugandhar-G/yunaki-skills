@@ -20,6 +20,11 @@
     const labels = ordered.map((_, i) => `Run ${i + 1}`);
     const before = ordered.map((r) => r.score_before);
     const after = ordered.map((r) => r.score_after);
+    // Control arm: agent without skills. Null when a run predates the control
+    // arm — Chart.js skips those points via spanGaps.
+    const control = ordered.map((r) =>
+      r.score_control === null || r.score_control === undefined ? null : r.score_control,
+    );
 
     if (chart) chart.destroy();
 
@@ -29,7 +34,7 @@
         labels,
         datasets: [
           {
-            label: "After skills",
+            label: "Agent + skills",
             data: after,
             borderColor: "#34d399",
             borderWidth: 2.5,
@@ -45,7 +50,19 @@
             },
           },
           {
-            label: "Baseline",
+            label: "Agent only (no skills)",
+            data: control,
+            borderColor: "#fbbf24",
+            borderWidth: 2,
+            tension: 0.4,
+            fill: false,
+            spanGaps: true,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            pointBackgroundColor: "#fbbf24",
+          },
+          {
+            label: "Baseline (no agent)",
             data: before,
             borderColor: "#f87171",
             borderWidth: 1.5,
@@ -73,7 +90,12 @@
             titleColor: "#e9ecf4",
             bodyColor: "#9aa3b8",
             padding: 10,
-            callbacks: { label: (c) => ` ${c.dataset.label}: ${c.parsed.y.toFixed(0)}` },
+            callbacks: {
+              label: (c) =>
+                c.parsed.y === null || c.parsed.y === undefined
+                  ? ` ${c.dataset.label}: N/A`
+                  : ` ${c.dataset.label}: ${c.parsed.y.toFixed(0)}`,
+            },
           },
         },
         scales: {

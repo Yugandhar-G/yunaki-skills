@@ -72,17 +72,36 @@
   function showResult(result) {
     const before = result.score_before || 0;
     const after = result.score_after || 0;
-    const delta = after - before;
+    const hasControl = result.score_control !== null && result.score_control !== undefined;
+    const control = hasControl ? result.score_control : null;
+
+    // skill_delta is the ONLY number that proves skills helped: it isolates the
+    // skill contribution by comparing against the control arm (agent, no skills).
+    const skillDelta = hasControl ? after - control : null;
+    // total_delta is the headline improvement over the no-agent baseline.
+    const totalDelta = after - before;
+
+    const controlBox = hasControl
+      ? `<div class="result-score-box"><span class="l">Agent only</span><span class="v ${scoreClass(control)}">${control.toFixed(0)}</span></div>`
+      : `<div class="result-score-box"><span class="l">Agent only</span><span class="v score-low">N/A</span></div>`;
+
+    const skillBadge = hasControl
+      ? `<span class="delta-badge ${skillDelta < 0 ? "neg" : ""}">skill Δ ${skillDelta >= 0 ? "+" : ""}${skillDelta.toFixed(0)} pts</span>`
+      : `<span class="delta-badge neg">skill Δ N/A</span>`;
+
     const node = el("run-result");
     node.classList.remove("hidden");
     node.innerHTML = `
       <div class="result-scores">
-        <div class="result-score-box"><span class="l">Before</span><span class="v score-low">${before.toFixed(0)}</span></div>
+        <div class="result-score-box"><span class="l">Baseline</span><span class="v score-low">${before.toFixed(0)}</span></div>
         <div class="result-arrow">→</div>
-        <div class="result-score-box"><span class="l">After</span><span class="v ${scoreClass(after)}">${after.toFixed(0)}</span></div>
-        <span class="delta-badge ${delta < 0 ? "neg" : ""}">${delta >= 0 ? "+" : ""}${delta.toFixed(0)} pts</span>
+        ${controlBox}
+        <div class="result-arrow">→</div>
+        <div class="result-score-box"><span class="l">After skills</span><span class="v ${scoreClass(after)}">${after.toFixed(0)}</span></div>
+        ${skillBadge}
       </div>
       <p class="hint" style="margin-top:.7rem">
+        total Δ ${totalDelta >= 0 ? "+" : ""}${totalDelta.toFixed(0)} pts (vs no agent) ·
         ${result.iterations} iteration(s) ·
         ${(result.skills_used || []).length} used ·
         ${(result.skills_created || []).length} created ·
@@ -90,7 +109,18 @@
       </p>`;
   }
 
+  function showSimulatedBanner() {
+    const node = el("run-result");
+    if (!node || node.querySelector(".simulated-banner")) return;
+    node.classList.remove("hidden");
+    node.insertAdjacentHTML(
+      "afterbegin",
+      `<div class="simulated-banner" style="background:#7f1d1d;color:#fee2e2;border:1px solid #f87171;border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem;font-weight:700;letter-spacing:.02em">⚠ SIMULATED RUN — scores are fabricated, not measured. Do not trust these numbers.</div>`,
+    );
+  }
+
   function handleEvent(ev) {
+    if (ev.simulated) showSimulatedBanner();
     switch (ev.type) {
       case "run_started":
         setProgress(0, ev.max_iterations || 1);

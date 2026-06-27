@@ -376,19 +376,33 @@ async def api_stats():
     avg_score = sum(s.get("score", 0) for s in skills) / total_skills if total_skills else 0
     total_runs = len(runs)
 
+    # total improvement conflates the agent and the skills: it measures
+    # (after - before) against the no-agent baseline.
     improvements = []
+    # skill contribution isolates what the skills actually added: (after - control),
+    # where control is the agent running WITHOUT skills. Only this delta proves
+    # the skills helped. Runs without a control arm are excluded.
+    skill_deltas = []
     for r in runs:
         before = r.get("score_before", 0)
         after = r.get("score_after", 0)
+        control = r.get("score_control")
         if before > 0:
             improvements.append((after - before) / before * 100)
+        if control is not None:
+            skill_deltas.append(after - control)
+
     avg_improvement = sum(improvements) / len(improvements) if improvements else 0
+    avg_skill_delta = sum(skill_deltas) / len(skill_deltas) if skill_deltas else None
 
     return {
         "total_skills": total_skills,
         "avg_score": round(avg_score, 1),
         "total_runs": total_runs,
+        # total improvement (vs no-agent baseline) — conflated metric, kept for context
         "avg_improvement": round(avg_improvement, 1),
+        # skill contribution (vs agent without skills) — the honest, defensible metric
+        "avg_skill_delta": round(avg_skill_delta, 1) if avg_skill_delta is not None else None,
     }
 
 
