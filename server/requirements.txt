@@ -1,0 +1,4 @@
+# Server-only dependencies. The core CLI (recall/facts/ingest_pr/consolidate) stays
+# stdlib-only; these are needed solely to run the shared HTTP service.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0

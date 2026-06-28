@@ -253,6 +253,31 @@ def render(skill: str, body: str) -> str:
     )
 
 
+def _supermem_url() -> str:
+    return os.environ.get("YUNAKI_SUPERMEM_URL", "").strip().rstrip("/")
+
+
+def fetch_supermem(skill: str, query: str, limit: int) -> str:
+    """Opt-in shared super-memory source: GET <YUNAKI_SUPERMEM_URL>/recall with a per-repo
+    bearer token (YUNAKI_SUPERMEM_TOKEN). The token implies the repo scope server-side.
+
+    Off unless YUNAKI_SUPERMEM_URL is set to an http(s) URL. Never raises — returns "" on
+    any failure, so a bound skill behaves exactly as if no service were configured."""
+    base = _supermem_url()
+    if not base.startswith(("http://", "https://")):
+        return ""
+    qs = parse.urlencode({"skill": skill, "query": query, "limit": limit})
+    req = request.Request(f"{base}/recall?{qs}")
+    token = os.environ.get("YUNAKI_SUPERMEM_TOKEN", "").strip()
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            return resp.read().decode("utf-8", "replace").strip()
+    except (error.URLError, OSError, ValueError):
+        return ""
+
+
 def recall(
     skill: str,
     query: str | None = None,
@@ -287,7 +312,9 @@ def recall(
                 cm = ""
         if not cm:
             cm = fetch_sqlite(effective_query, limit, db_path)
-    body = "\n".join(part for part in (local, cm) if part)
+    # Tertiary source: a shared org-level super memory (opt-in; off unless configured).
+    sm = fetch_supermem(skill, effective_query, limit)
+    body = "\n".join(part for part in (local, cm, sm) if part)
     return render(skill, body)
 
 

@@ -1,0 +1,25 @@
+# TLS overlay: put Caddy in front for automatic HTTPS and stop exposing the app port
+# directly. Use together with the base compose file:
+#   SITE_ADDRESS=<ip>.sslip.io docker compose -f docker-compose.yml -f deploy/docker-compose.caddy.yml up -d --build
+services:
+  supermem:
+    ports: []  # no longer published to the host; only Caddy reaches it (internal network)
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS to <ip>.sslip.io}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - supermem
+
+volumes:
+  caddy_data:
+  caddy_config:

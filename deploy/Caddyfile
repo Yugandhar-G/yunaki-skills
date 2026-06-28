@@ -1,0 +1,7 @@
+# Automatic HTTPS for the super-memory service without owning a domain.
+# SITE_ADDRESS is <droplet-ip>.sslip.io (sslip.io resolves the IP from the hostname),
+# so Caddy gets a real Let's Encrypt cert for it. Only Caddy is exposed publicly; it
+# reverse-proxies to the app on the internal compose network.
+{$SITE_ADDRESS} {
+	reverse_proxy supermem:8000
+}
