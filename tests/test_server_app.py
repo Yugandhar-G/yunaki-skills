@@ -28,6 +28,18 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("YUNAKI_FACTS_DIR", str(tmp_path))
     monkeypatch.setenv("YUNAKI_TOKENS", json.dumps({TOKEN_A: REPO_A, TOKEN_B: REPO_B}))
     monkeypatch.setenv("YUNAKI_WEBHOOK_SECRET", "hooksecret")
+    # a tiny local checkout so the on-merge codebase rebuild scans real files, never the
+    # network (YUNAKI_REPO_PATH short-circuits the shallow git clone in _repo_source).
+    src = tmp_path / "src"
+    src.mkdir()
+    for name in ("alpha", "beta", "gamma"):
+        (src / f"{name}.py").write_text(
+            "from __future__ import annotations\n"
+            "import os\n\n\n"
+            "def go() -> str:\n"
+            "    return os.getcwd()\n"
+        )
+    monkeypatch.setenv("YUNAKI_REPO_PATH", str(src))
     return tmp_path
 
 
@@ -107,6 +119,33 @@ def test_webhook_ingests_merged_pr(env, client, monkeypatch):
     # background task ran: the merged PR's knowledge is now in REPO_A's slice
     loaded = facts.load_facts(facts.facts_dir(REPO_A, str(env)))
     assert any("clamp negative offset" in f.title for f in loaded)
+
+
+def test_webhook_rebuilds_codebase_conventions(env, client, monkeypatch):
+    # even with no new PRs, a merge rebuilds the repo's codebase conventions from source
+    monkeypatch.setattr(ingest_pr, "fetch_merged_prs", lambda repo, since_number, limit: [])
+    payload = {
+        "action": "closed",
+        "pull_request": {"merged": True},
+        "repository": {"full_name": REPO_A},
+    }
+    body = json.dumps(payload).encode()
+    sig = "sha256=" + hmac.new(b"hooksecret", body, hashlib.sha256).hexdigest()
+    r = client.post("/webhook", content=body, headers={"X-Hub-Signature-256": sig})
+    assert r.json()["status"] == "scheduled"
+
+    loaded = facts.load_facts(facts.facts_dir(REPO_A, str(env)))
+    assert any(f.source == "codebase" for f in loaded), "merge must rebuild codebase conventions"
+    assert any("from __future__" in f.body or "stdlib-only" in f.title.lower() for f in loaded)
+
+
+def test_repo_source_prefers_local_checkout(env):
+    # with YUNAKI_REPO_PATH set, the rebuild scans it directly — never a network clone
+    from server.app import _repo_source
+
+    path, is_temp = _repo_source(REPO_A)
+    assert is_temp is False
+    assert path.endswith("src")
 
 
 def test_webhook_ignores_unmerged(env, client):

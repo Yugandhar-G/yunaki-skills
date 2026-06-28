@@ -144,6 +144,36 @@ def convention_facts(graph: dict) -> list[tuple[str, str, str]]:
     return out
 
 
+def write_convention_facts(
+    scan_root: str,
+    skills: list[str] | None = None,
+    project: str | None = None,
+    store_root: str | None = None,
+) -> list[str]:
+    """Scan `scan_root`, write its repo-wide conventions as facts, return the paths.
+
+    Shared by the CLI (`--write`) and the server's on-merge rebuild, so both produce the
+    SAME codebase facts. `skills=None` means global (recalled by any invoked skill); pass
+    `project`/`store_root` to target a specific repo slice (the shared service does this).
+    """
+    import facts  # local import keeps codegraph runnable without the store on the path
+
+    graph = build_graph(scan_root)
+    return [
+        facts.write_fact(
+            skills or [],
+            title,
+            body,
+            project=project,
+            root=store_root if store_root is not None else facts.DEFAULT_ROOT,
+            source="codebase",
+            ref="codegraph",
+            topic=conv,
+        )
+        for conv, title, body in convention_facts(graph)
+    ]
+
+
 def render_text(graph: dict) -> str:
     header = f"codebase graph: {len(graph['nodes'])} modules, {len(graph['edges'])} import edges"
     lines = [header, ""]
@@ -169,22 +199,17 @@ def main(argv: list[str] | None = None) -> int:
         help="scope to one skill; omit for GLOBAL conventions any invoked skill recalls",
     )
     args = p.parse_args(argv)
-    graph = build_graph(args.root)
     if args.write:
-        import facts  # local; keeps codegraph itself stdlib-only
-
-        # [] = global: recalled by ANY skill when it is invoked, no tagging, no failure
-        # required. Repo-wide conventions are house rules; they belong to the repo, not one skill.
-        skills = [args.skill] if args.skill else []
-        paths = [
-            facts.write_fact(skills, title, body, source="codebase", ref="codegraph", topic=conv)
-            for conv, title, body in convention_facts(graph)
-        ]
+        # skills=None -> [] global: recalled by ANY skill when invoked, no tagging, no
+        # failure required. Repo-wide conventions are house rules, not one skill's.
+        skills = [args.skill] if args.skill else None
+        paths = write_convention_facts(args.root, skills=skills)
         scope = f"skill '{args.skill}'" if args.skill else "GLOBAL: recalled by any invoked skill"
         print(f"wrote {len(paths)} repo-convention facts · scope: {scope}")
         for pth in paths:
             print("  " + pth)
         return 0
+    graph = build_graph(args.root)
     print(json.dumps(graph, indent=2) if args.json else render_text(graph))
     return 0
 

@@ -59,13 +59,14 @@ SHOW: the A/B — 1/3 without context, 3/3 with it.
 > "Real Claude agents, same task. The only difference is whether they had the recalled rule.
 > Without it: one of three. With it: three of three. No LLM in the loop, no edits."
 
-### 2:30–2:55 · Beat 6 — one shared brain for the whole org  ← **team story**
-SHOW: the live `curl` returning real PR knowledge over HTTPS. Cut to the browser at
+### 2:30–2:55 · Beat 6 — one shared brain, rebuilt on every merge  ← **team story**
+SHOW: a merged-PR webhook hits the shared memory and it **rebuilds from the codebase** (the
+store jumps from 0 to N conventions — `team.png`); then the live browser at
 `https://161.35.239.198.sslip.io/` — padlock + "facts learned · 0 LLM calls".
-> "And it's not one laptop. Every repo and teammate points at one shared memory. It
-> self-evolves from merged PRs — so when *one* engineer's PR lands a convention, *every*
-> teammate's agents recall it on the next skill they invoke. One dev merges; the whole org's
-> agents get sharper. Skills never rewritten — the org's shared memory is."
+> "And it's not one laptop. Every repo and teammate points at one shared memory. When *one*
+> engineer merges a PR, GitHub fires a webhook and the shared memory **rebuilds itself from the
+> merged code** — no rewrites, no model calls. Every teammate then recalls the refreshed rules
+> on the next skill they invoke. One dev merges; the whole org's agents get sharper."
 
 ### 2:55–3:00 · Close
 > "Read from your code, sharpened by every failure and PR, shared across the team — and every
@@ -83,7 +84,9 @@ byte-for-byte unchanged. This is the `failures.png` receipt on the landing page.
 - `alwayson.png` — Beat 2–3: scanned from the code, skill invoked, already loaded. **No failure.**
 - `failures.png` — Beat 4 / `skill-evolves.sh`: three conventions learned from failing tests.
 - `ab.png` — Beat 5: same agent, 1/3 without context vs 3/3 with it.
-- `live.png` — Beat 6: the org's shared memory answering live over HTTPS, fed from merged PRs.
+- `team.png` — Beat 6: a merged-PR webhook rebuilds the shared memory (0 → N conventions),
+  recalled over HTTPS. The team loop.
+- `live.png` — Beat 6: the shared memory answering live over HTTPS, deployed.
 
 Regenerate any shot from real output with `./demo/shot.py <capture.txt> <out.png>`.
 

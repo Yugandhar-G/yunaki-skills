@@ -265,10 +265,15 @@ export YUNAKI_SUPERMEM_URL=<span class="a">https://your-supermem.example</span>
 export YUNAKI_SUPERMEM_TOKEN=<span class="a">&lt;your repo token&gt;</span>
 <span class="c"># strictly additive + fail-open — offline falls back to local context</span></pre>
 
-  <img class="shot" src="demo/screenshots/live.png" alt="The org's shared memory answering live over HTTPS, fed from merged PRs">
-  <p class="cap">The org's shared memory answering live over HTTPS — its facts came straight from this
-   repo's <b>merged pull requests</b> via a GitHub webhook. One dev merges; every teammate's agents
-   get sharper on their next invocation. No rewrites, no model calls.</p>
+  <img class="shot" src="demo/screenshots/team.png" alt="A merged PR fires the webhook; the shared memory is rebuilt from the codebase; teammates recall it">
+  <p class="cap">The loop, end to end: a teammate merges a PR, GitHub fires the webhook, and the
+   shared memory <b>rebuilds itself from the merged code</b> — here the store goes from 0 to 4
+   conventions, re-scanned on the merge. Every teammate then recalls the refreshed rules over HTTPS
+   on the next skill they invoke. No rewrites, no model calls.</p>
+
+  <img class="shot" src="demo/screenshots/live.png" alt="The org's shared memory answering live over HTTPS">
+  <p class="cap">And it's really deployed — the same shared memory answering live over HTTPS on one
+   small box, per-repo tokens, padlock and all.</p>
 
   <div class="specs" style="margin-top:1.2rem">
    <div><b>per-repo</b><span class="lab">scoped tokens</span></div>
