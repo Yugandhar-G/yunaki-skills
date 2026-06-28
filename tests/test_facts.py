@@ -81,6 +81,24 @@ def test_fetch_excludes_other_skills(tmp_path):
     assert facts.fetch("unrelated-skill", project="proj", root=root) == ""
 
 
+def test_fetch_ranks_specific_over_boilerplate_bm25(tmp_path):
+    # BM25 must rank the short, specific fact above a long fact that just repeats a common
+    # word. (The old raw term-count ranker did the opposite — it rewarded repetition/length.)
+    root = str(tmp_path)
+    facts.write_fact(
+        [],
+        "general validation notes",
+        "validation validation validation validation general validation guidance",
+        project="proj",
+        root=root,
+    )
+    facts.write_fact(
+        [], "use 422 for validation errors", "return 422 on bad input", project="proj", root=root
+    )
+    out = facts.fetch("any-skill", query="422 validation", project="proj", root=root)
+    assert out.splitlines()[0] == "- use 422 for validation errors"
+
+
 def test_fetch_includes_global_facts(tmp_path):
     root = _seed(tmp_path, "g.md", GLOBAL_FACT)
     assert "Always validate input" in facts.fetch("anything", project="proj", root=root)

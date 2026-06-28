@@ -29,6 +29,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import glob
+import math
 import os
 import re
 import zlib
@@ -122,6 +123,44 @@ def _relevant(skills: list[str], skill: str) -> bool:
     return (not skills) or (skill in skills)
 
 
+def _rank(matches: list[Fact], query: str) -> list[Fact]:
+    """Rank facts by BM25 over each fact's text (title weighted), most relevant first.
+
+    Deterministic and stdlib-only. BM25 beats raw term-count because it down-weights terms
+    common across the store (IDF) and normalises for length, so a short fact that hits a
+    rare query term outranks a long boilerplate fact that merely repeats a common one.
+    """
+    terms = [w.lower() for w in re.findall(r"\w+", query)]
+    if not terms or not matches:
+        return matches
+    # title counted twice so a title hit outweighs the same word buried in the body
+    docs = [re.findall(r"\w+", f"{f.title} {f.title} {f.body}".lower()) for f in matches]
+    n = len(docs)
+    avgdl = (sum(len(d) for d in docs) / n) or 1.0
+    df: dict[str, int] = {}
+    for d in docs:
+        for t in set(d):
+            df[t] = df.get(t, 0) + 1
+    k1, b = 1.5, 0.75
+    uniq_terms = set(terms)
+
+    def score(idx: int) -> float:
+        d = docs[idx]
+        dl = len(d) or 1
+        total = 0.0
+        for t in uniq_terms:
+            tf = d.count(t)
+            if not tf:
+                continue
+            idf = math.log(1 + (n - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5))
+            total += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avgdl))
+        return total
+
+    # stable sort: equal scores keep their on-disk order
+    order = sorted(range(n), key=score, reverse=True)
+    return [matches[i] for i in order]
+
+
 def fetch(
     skill: str,
     query: str | None = None,
@@ -131,21 +170,18 @@ def fetch(
 ) -> str:
     """Return a markdown bullet body of facts for `skill` (or ""). Never raises.
 
-    When `query` is given, facts are ranked by keyword overlap with the query."""
+    When `query` is given, facts are ranked by BM25 relevance to the query (deterministic,
+    no LLM, no network)."""
     try:
         facts = load_facts(facts_dir(project, root))
     except OSError:
         return ""
     matches = [f for f in facts if _relevant(f.skills, skill)]
     if query:
-        terms = [w.lower() for w in re.findall(r"\w+", query)]
-        if terms:
-
-            def score(item: Fact) -> int:
-                hay = f"{item.title} {item.body}".lower()
-                return sum(hay.count(term) for term in terms)
-
-            matches.sort(key=score, reverse=True)
+        try:
+            matches = _rank(matches, query)
+        except Exception:  # noqa: BLE001,S110 — ranking must never break recall; keep order
+            pass
     lines = []
     for fact in matches[:limit]:
         first = fact.body.splitlines()[0] if fact.body else ""
