@@ -56,6 +56,20 @@ def test_uninstall_noop_when_absent(tmp_path):
     assert git_hook.uninstall(str(tmp_path / "hooks")) is False
 
 
+def test_uninstall_preserves_user_hook_that_mentions_marker_string(tmp_path):
+    # A user hook that echoes the marker string must not be corrupted by uninstall.
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    user = '#!/usr/bin/env bash\necho "' + git_hook.START + '"\nmake build\n'
+    (hooks / "post-merge").write_text(user)
+    git_hook.install(str(hooks), script_path="/abs/s.sh")
+    assert git_hook.uninstall(str(hooks)) is True
+    text = (hooks / "post-merge").read_text()
+    assert "make build" in text  # user content fully intact
+    assert 'echo "' + git_hook.START + '"' in text
+    assert "/abs/s.sh" not in text  # only our block removed
+
+
 def test_build_block_shell_quotes_path():
     block = git_hook.build_block("/path with spaces/s.sh")
     assert "'/path with spaces/s.sh'" in block

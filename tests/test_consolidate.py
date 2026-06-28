@@ -34,6 +34,14 @@ def test_dedup_keeps_distinct_content():
     assert len(kept) == 2 and dropped == []
 
 
+def test_dedup_keeps_same_content_on_different_topics():
+    # "add a docstring" left on two different files is two distinct pieces of guidance.
+    a = _f("add a docstring", body="add a docstring", topic="a.py", path="a.md")
+    b = _f("add a docstring", body="add a docstring", topic="b.py", path="b.md")
+    kept, dropped = consolidate.dedup([a, b])
+    assert len(kept) == 2 and dropped == []
+
+
 # ── supersede ─────────────────────────────────────────────────────────────────
 
 

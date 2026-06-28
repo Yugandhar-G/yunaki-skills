@@ -157,16 +157,27 @@ def _slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60] or "fact"
 
 
+def _crc(text: str) -> str:
+    return format(zlib.crc32(text.encode("utf-8")) & 0xFFFFFFFF, "08x")
+
+
+def _oneline(value: str) -> str:
+    """Collapse a frontmatter value to a single line so it can't inject extra keys."""
+    return " ".join(str(value).split())
+
+
 def _fact_filename(source: str, ref: str, topic: str, title: str) -> str:
     """Stable filename. Sourced facts key on source/ref/topic/title with a deterministic
     hash suffix so re-ingesting the same fact overwrites (idempotent) while distinct facts
-    never collide once the readable slug is truncated. Manual facts key on the title (their
-    natural identity)."""
+    never collide once the readable slug is truncated. Manual facts key on the title, with
+    the same hash disambiguation when the title is long enough to truncate."""
     if source != _DEFAULT_SOURCE and (ref or topic):
         key = f"{source}-{ref}-{topic}-{title}"
-        digest = format(zlib.crc32(key.encode("utf-8")) & 0xFFFFFFFF, "08x")
-        return f"{_slug(key)[:48]}-{digest}.md"
-    return f"{_slug(title)}.md"
+        return f"{_slug(key)[:48]}-{_crc(key)}.md"
+    slug = _slug(title)
+    if len(slug) >= 60:  # _slug truncates at 60; disambiguate to avoid silent overwrite
+        return f"{slug[:48]}-{_crc(title)}.md"
+    return f"{slug}.md"
 
 
 def write_fact(
@@ -185,6 +196,10 @@ def write_fact(
 
     `created` defaults to today when not supplied; provenance fields are only written
     when set, so manual facts stay minimal and old facts remain valid."""
+    # Single-line every frontmatter value so a newline in untrusted input can't inject
+    # extra keys (e.g. a title smuggling its own `skills:` line and re-scoping the fact).
+    title, ref, topic, source = _oneline(title), _oneline(ref), _oneline(topic), _oneline(source)
+    skills = [_oneline(s) for s in skills]
     directory = facts_dir(project, root)
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, _fact_filename(source, ref, topic, title))

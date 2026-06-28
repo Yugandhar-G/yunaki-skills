@@ -36,6 +36,13 @@ _GH_TIMEOUT = 30
 _MERGE_RE = re.compile(r"^(Merge (pull request|branch|remote-tracking)|Merge\b)", re.IGNORECASE)
 _BOT_RE = re.compile(r"(\[bot\]|-bot$|^dependabot|^github-actions)", re.IGNORECASE)
 _REMOTE_RE = re.compile(r"github\.com[:/]+([^/]+/[^/.]+)")
+# Redact obvious secrets before they're persisted (recall.py also scrubs on read; this is
+# defense-in-depth so a leaked token in a PR body never lands on disk). Mirrors recall._SECRET_RE.
+_SECRET_RE = re.compile(
+    r"(?i)(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|"
+    r"AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|"
+    r"(?:password|secret|token|api[_-]?key)\s*[=:]\s*\S{6,})"
+)
 
 
 # ── gh boundary (the only side-effecting part; never raises) ───────────────────
@@ -113,7 +120,8 @@ def fetch_merged_prs(repo: str, since_number: int = 0, limit: int = _DEFAULT_LIM
 
 
 def _clean(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").strip())
+    collapsed = re.sub(r"\s+", " ", (text or "").strip())
+    return _SECRET_RE.sub("[REDACTED]", collapsed)
 
 
 def _first_line(text: str) -> str:
@@ -123,19 +131,32 @@ def _first_line(text: str) -> str:
     return ""
 
 
+def _safe_int(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
 def _pr_topic(files: list[dict]) -> str:
     """The single most-changed file — a specific supersession key. '' if none."""
-    paths = [f.get("path", "") for f in files if isinstance(f, dict) and f.get("path")]
-    if not paths:
+    dicts = [f for f in files if isinstance(f, dict) and f.get("path")]
+    if not dicts:
         return ""
-    if len(paths) == 1:
-        return paths[0]
+    if len(dicts) == 1:
+        return dicts[0]["path"]
 
     def churn(f: dict) -> int:
-        return int(f.get("additions", 0) or 0) + int(f.get("deletions", 0) or 0)
+        return _safe_int(f.get("additions")) + _safe_int(f.get("deletions"))
 
-    ranked = sorted((f for f in files if f.get("path")), key=churn, reverse=True)
-    return ranked[0].get("path", paths[0])
+    # Secondary key (path) so equal-churn files pick the same topic across re-runs — topic
+    # is the supersession key, so a non-deterministic pick would break re-ingest idempotency.
+    ranked = sorted(dicts, key=lambda f: (churn(f), f.get("path", "")), reverse=True)
+    return ranked[0]["path"]
 
 
 def extract_facts_from_pr(pr: dict) -> list[dict]:
@@ -216,7 +237,8 @@ def read_watermark(project: str | None = None, root: str = facts.DEFAULT_ROOT) -
         with open(_watermark_path(project, root), encoding="utf-8") as fh:
             for line in fh:
                 if line.startswith("last_pr="):
-                    return int(line.split("=", 1)[1].strip() or 0)
+                    n = int(line.split("=", 1)[1].strip() or 0)
+                    return n if n >= 0 else 0  # clamp a corrupt/negative watermark
     except (OSError, ValueError):
         return 0
     return 0
@@ -253,24 +275,28 @@ def ingest_prs(
     written: list[str] = []
     highest = since
     for pr in prs:
-        num = pr.get("number", 0)
-        created = (pr.get("mergedAt") or "")[:10]
-        ref = f"#{num}"
-        for spec in extract_facts_from_pr(pr):
-            written.append(
-                facts.write_fact(
-                    tags,
-                    spec["title"],
-                    spec["body"],
-                    project=project,
-                    root=root,
-                    source="pr",
-                    ref=ref,
-                    topic=spec["topic"],
-                    created=created or None,
+        # One malformed PR must not abort the whole run (keeps the never-raise contract).
+        try:
+            num = pr.get("number", 0)
+            created = (pr.get("mergedAt") or "")[:10]
+            ref = f"#{num}"
+            for spec in extract_facts_from_pr(pr):
+                written.append(
+                    facts.write_fact(
+                        tags,
+                        spec["title"],
+                        spec["body"],
+                        project=project,
+                        root=root,
+                        source="pr",
+                        ref=ref,
+                        topic=spec["topic"],
+                        created=created or None,
+                    )
                 )
-            )
-        highest = max(highest, num)
+            highest = max(highest, num)
+        except (OSError, ValueError, TypeError, KeyError):
+            continue
     if highest > since:
         write_watermark(highest, project, root)
     return {"repo": repo, "prs": len(prs), "written": written, "watermark": highest}

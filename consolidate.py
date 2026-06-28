@@ -64,10 +64,12 @@ def _looks_like_path(topic: str) -> bool:
 
 
 def dedup(items: list[facts.Fact]) -> tuple[list[facts.Fact], list[facts.Fact]]:
-    """Collapse identical content (title+body), keeping the newest per group."""
-    groups: dict[tuple[str, str], list[facts.Fact]] = {}
+    """Collapse identical content, keeping the newest per group. Topic is part of the key:
+    two facts with the same words but anchored to different files are distinct guidance."""
+    groups: dict[tuple[str, str, str], list[facts.Fact]] = {}
     for f in items:
-        groups.setdefault((f.title.strip().lower(), f.body.strip().lower()), []).append(f)
+        key = (f.title.strip().lower(), f.body.strip().lower(), f.topic)
+        groups.setdefault(key, []).append(f)
     kept, dropped = [], []
     for group in groups.values():
         ordered = sorted(group, key=_recency_key)

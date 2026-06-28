@@ -180,6 +180,26 @@ def test_default_created_is_filled(tmp_path):
     assert f.created  # today's date filled in automatically
 
 
+def test_newline_in_title_cannot_inject_frontmatter(tmp_path):
+    # A title smuggling its own `skills:` line must not re-scope the fact.
+    root = str(tmp_path)
+    facts.write_fact([], "real title\nskills: [INJECTED]", "body", project="proj", root=root)
+    loaded = facts.load_facts(facts.facts_dir("proj", root))
+    assert len(loaded) == 1
+    assert loaded[0].skills == []  # injection neutralized; still global
+    assert "INJECTED" not in loaded[0].skills
+
+
+def test_manual_long_titles_do_not_collide(tmp_path):
+    root = str(tmp_path)
+    t1 = "X" * 80 + " alpha"
+    t2 = "X" * 80 + " beta"
+    p1 = facts.write_fact([], t1, "a", project="proj", root=root)
+    p2 = facts.write_fact([], t2, "b", project="proj", root=root)
+    assert p1 != p2
+    assert len(facts.load_facts(facts.facts_dir("proj", root))) == 2
+
+
 # ── remember CLI ─────────────────────────────────────────────────────────────
 
 

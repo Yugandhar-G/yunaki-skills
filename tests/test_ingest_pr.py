@@ -95,6 +95,49 @@ def test_extract_empty_pr_is_empty():
     assert ingest_pr.extract_facts_from_pr({"title": "", "files": []}) == []
 
 
+def test_extract_survives_non_numeric_churn():
+    # gh JSON is external; a non-numeric additions/deletions must not raise.
+    pr = {
+        "number": 9,
+        "title": "fix something important in the codebase",
+        "files": [
+            {"path": "a.py", "additions": "NaN", "deletions": None},
+            {"path": "b.py", "additions": 3, "deletions": 1},
+        ],
+    }
+    specs = ingest_pr.extract_facts_from_pr(pr)
+    assert specs and specs[0]["topic"] == "b.py"  # the numerically-rankable file wins
+
+
+def test_extract_redacts_secrets():
+    pr = {
+        "number": 9,
+        "title": "chore: rotate credentials and clean things up",
+        "body": "old token was ghp_0123456789012345678901234567890123 fyi",
+        "files": [{"path": "a.py", "additions": 1, "deletions": 0}],
+        "review_comments": [
+            {
+                "path": "a.py",
+                "body": "left AWS_SECRET=AKIAIOSFODNN7EXAMPLE in here, remove it",
+                "user": {"login": "rev"},
+            }
+        ],
+    }
+    blob = " ".join(s["body"] for s in ingest_pr.extract_facts_from_pr(pr))
+    assert "ghp_0123456789012345678901234567890123" not in blob
+    assert "AKIAIOSFODNN7EXAMPLE" not in blob
+    assert "[REDACTED]" in blob
+
+
+def test_pr_topic_tie_is_deterministic():
+    files = [
+        {"path": "b.py", "additions": 5, "deletions": 0},
+        {"path": "a.py", "additions": 5, "deletions": 0},
+    ]
+    assert ingest_pr._pr_topic(files) == "b.py"  # equal churn -> stable secondary key (path desc)
+    assert ingest_pr._pr_topic(list(reversed(files))) == "b.py"  # order-independent
+
+
 # ── skill tagging ──────────────────────────────────────────────────────────────
 
 
@@ -115,6 +158,12 @@ def test_watermark_round_trip(tmp_path):
     assert ingest_pr.read_watermark("proj", root) == 0
     ingest_pr.write_watermark(8, "proj", root)
     assert ingest_pr.read_watermark("proj", root) == 8
+
+
+def test_watermark_clamps_corrupt_value(tmp_path):
+    root = str(tmp_path)
+    ingest_pr.write_watermark(-5, "proj", root)
+    assert ingest_pr.read_watermark("proj", root) == 0  # negative clamped, not re-ingest-all
 
 
 # ── orchestration (gh boundary mocked) ─────────────────────────────────────────
@@ -147,6 +196,15 @@ def test_ingest_prs_no_repo_returns_error(tmp_path, monkeypatch):
     monkeypatch.setattr(ingest_pr, "detect_repo", lambda: None)
     report = ingest_pr.ingest_prs(repo=None, project="proj", root=str(tmp_path))
     assert report["error"] == "no repo" and report["written"] == []
+
+
+def test_ingest_prs_survives_a_malformed_pr(tmp_path, monkeypatch):
+    root = str(tmp_path)
+    bad = {"number": "not-an-int", "files": [{"path": "a.py", "additions": object()}]}
+    monkeypatch.setattr(ingest_pr, "fetch_merged_prs", lambda repo, since_number, limit: [bad, PR])
+    report = ingest_pr.ingest_prs(repo="o/r", project="proj", root=root)
+    # the good PR still ingests; the bad one is skipped, not fatal
+    assert report["written"] and report["watermark"] == 8
 
 
 def test_fetch_merged_prs_filters_by_watermark(monkeypatch):

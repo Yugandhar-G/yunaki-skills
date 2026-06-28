@@ -26,7 +26,11 @@ END = "# <<< yunaki super-memory <<<"
 _DEFAULT_SCRIPT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "hooks", "post-merge-ingest.sh"
 )
-_BLOCK_RE = re.compile(rf"\n*{re.escape(START)}.*?{re.escape(END)}\n*", re.DOTALL)
+# Markers must be whole lines, so a START string embedded in a user's own hook (e.g. inside
+# an echo) can't become the match start and let uninstall swallow their content.
+_BLOCK_RE = re.compile(
+    rf"\n*^{re.escape(START)}$.*?^{re.escape(END)}$\n*", re.DOTALL | re.MULTILINE
+)
 
 
 def build_block(script_path: str) -> str:
