@@ -9,8 +9,8 @@ No architecture diagrams.
 ## Before you hit record
 ```bash
 # point the demo at your live service (the org's shared memory)
-export SUPERMEM_URL=https://161.35.239.198.sslip.io
-export SUPERMEM_TOKEN=ZWIcgn7Am-ei7GPmQssJdUEqvXE9vf9BYBwKxr9Lm00
+export SUPERMEM_URL=https://<your-supermem-host>.sslip.io
+export SUPERMEM_TOKEN=<your-repo-token>   # never commit the real token
 ```
 - Big terminal font (18pt+), wide window. Dark theme.
 - Do one dry run with `DEMO_AUTO=1 ./demo/evolve.sh` so you know the beats.
