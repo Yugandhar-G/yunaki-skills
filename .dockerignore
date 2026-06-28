@@ -1,0 +1,22 @@
+# Keep the build context small — the image only needs the core modules + server/.
+.git
+self-evolution-v1/
+tests/
+docs/
+*.md
+.github/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+binder.py
+register_hook.py
+remember.py
+git_hook.py
+recall.py
+install.sh
+hooks/
+landing-page-*.html

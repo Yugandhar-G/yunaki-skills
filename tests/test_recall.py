@@ -13,6 +13,9 @@ def _recall_isolation(monkeypatch):
     """Isolate recall tests: neutralize the local store and exercise the claude-mem path."""
     monkeypatch.setattr(recall.facts, "fetch", lambda *a, **k: "")
     monkeypatch.setenv("YUNAKI_USE_CLAUDE_MEM", "1")
+    monkeypatch.delenv(
+        "YUNAKI_SUPERMEM_URL", raising=False
+    )  # remote source off unless a test sets it
 
 
 # ── env parsing (never raises at import) ─────────────────────────────────────
@@ -299,3 +302,71 @@ def test_main_prints_nothing_when_empty(monkeypatch, capsys):
     monkeypatch.setattr(recall, "recall", lambda *a, **k: "")
     assert recall.main(["--skill", "x"]) == 0
     assert capsys.readouterr().out == ""
+
+
+# ── shared super-memory source (opt-in remote) ───────────────────────────────
+
+
+class _Resp:
+    def __init__(self, data: bytes):
+        self._data = data
+
+    def read(self):
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_fetch_supermem_off_when_unset(monkeypatch):
+    monkeypatch.delenv("YUNAKI_SUPERMEM_URL", raising=False)
+    assert recall.fetch_supermem("skill", "q", 8) == ""
+
+
+def test_fetch_supermem_rejects_non_http(monkeypatch):
+    monkeypatch.setenv("YUNAKI_SUPERMEM_URL", "file:///etc/passwd")
+    assert recall.fetch_supermem("skill", "q", 8) == ""
+
+
+def test_fetch_supermem_returns_text_and_sends_token(monkeypatch):
+    monkeypatch.setenv("YUNAKI_SUPERMEM_URL", "https://mem.example.com")
+    monkeypatch.setenv("YUNAKI_SUPERMEM_TOKEN", "tok-123")
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["auth"] = req.get_header("Authorization")
+        return _Resp(b"- remote fact about routes")
+
+    monkeypatch.setattr(recall.request, "urlopen", fake_urlopen)
+    out = recall.fetch_supermem("api-design", "routes", 5)
+    assert out == "- remote fact about routes"
+    assert captured["auth"] == "Bearer tok-123"
+    assert "skill=api-design" in captured["url"] and "/recall?" in captured["url"]
+
+
+def test_fetch_supermem_never_raises(monkeypatch):
+    from urllib import error
+
+    monkeypatch.setenv("YUNAKI_SUPERMEM_URL", "https://mem.example.com")
+
+    def boom(req, timeout=None):
+        raise error.URLError("down")
+
+    monkeypatch.setattr(recall.request, "urlopen", boom)
+    assert recall.fetch_supermem("s", "q", 8) == ""  # swallowed, returns ""
+
+
+def test_recall_includes_remote_source(monkeypatch):
+    monkeypatch.setenv("YUNAKI_SUPERMEM_URL", "https://mem.example.com")
+    monkeypatch.setattr(recall, "worker_healthy", lambda *a, **k: False)
+    monkeypatch.setattr(recall, "fetch_sqlite", lambda *a, **k: "")
+    monkeypatch.setattr(
+        recall.request, "urlopen", lambda req, timeout=None: _Resp(b"- shared org fact")
+    )
+    out = recall.recall("api-design", project="")
+    assert "shared org fact" in out
+    assert "Repo memory" in out  # wrapped by render()
