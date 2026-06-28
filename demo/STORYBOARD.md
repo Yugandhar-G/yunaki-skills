@@ -67,6 +67,13 @@ SHOW: the live `curl` returning real PR knowledge over HTTPS. (Cut to the browse
 
 ---
 
+## Optional depth beat — one skill, many lessons
+For a "it generalizes" moment, run **`./demo/skill-evolves.sh`** instead of (or after)
+`evolve.sh`. It binds a real `SKILL.md` (`demo/skills/repo-conventions/`) and has it learn
+**three** repo conventions from three failing tasks — slugs use underscores, validation
+returns 422, timestamps use a `Z` suffix — then shows the skill recalling all three while its
+method stays byte-for-byte unchanged. Strong proof the loop isn't a one-trick task.
+
 ## If the live box is down
 `evolve.sh` degrades gracefully (prints a note instead of the curl). Beats 1–5 are fully
 local and always work, so the demo never hard-fails on stage.

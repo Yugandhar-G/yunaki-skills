@@ -26,12 +26,12 @@ echo "   (empty — it has learned nothing)"
 pause
 
 b "2 │ An agent does the task. It writes the obvious slug… and fails our convention."
-( cd "$ROOT/demo/task" && python3 -m pytest -q test_slugify.py 2>&1 \
+( cd "$ROOT/demo/tasks/slug" && python3 -m pytest -q test_slugify.py 2>&1 \
     | grep -E "assert |FAILED|failed in" | head -4 )
 pause
 
 b "3 │ Feed that failure in. Pure extraction — NO LLM."
-( cd "$ROOT/demo/task" && python3 -m pytest -q test_slugify.py 2>&1 \
+( cd "$ROOT/demo/tasks/slug" && python3 -m pytest -q test_slugify.py 2>&1 \
     | python3 "$ROOT/ingest.py" --skill "$SKILL" --project demo )
 pause
 
