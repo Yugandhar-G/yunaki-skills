@@ -19,7 +19,8 @@ TASKS = {
     "status": (lambda m: m.validation_error_status(), 422),
     "time": (lambda m: m.iso_utc(datetime.datetime(2026, 6, 28, 12, 0, 0, tzinfo=UTC)), "2026-06-28T12:00:00Z"),
 }
-LABEL = {"slug": "slug", "status": "status", "time": "timestamp"}
+# human-readable names so the output reads without dev jargon
+LABEL = {"slug": "url format", "status": "error code", "time": "date format"}
 
 
 def _load(path: str):
@@ -30,10 +31,10 @@ def _load(path: str):
 
 
 def main() -> int:
-    print("6 implementations written by real Claude agents (haiku) — same task each time,")
-    print("the only difference is whether the recalled repo convention was in the prompt.\n")
-    print(f"{'task':10} {'arm':8} {'produced':22} {'expected':22} ok")
-    print("-" * 70)
+    print("Real Claude agents wrote the same function each time. The ONLY difference:")
+    print("did they have the codebase's house rule, or not?\n")
+    print(f"{'house rule':12} {'AI had rule?':13} {'it wrote':22} {'codebase wants':22} ok")
+    print("-" * 76)
     score = {"control": 0, "context": 0}
     for task, (call, expected) in TASKS.items():
         for arm, fname in (("control", f"ctl_{task}.py"), ("context", f"trt_{task}.py")):
@@ -43,10 +44,11 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001 — report any failure as a fail
                 got, ok = f"ERROR {e}", False
             score[arm] += ok
-            print(f"{LABEL[task]:10} {arm:8} {str(got)[:22]:22} {str(expected)[:22]:22} {'pass' if ok else 'FAIL'}")
-    print("-" * 70)
-    print(f"control (no learned context): {score['control']}/3 passed")
-    print(f"context (recalled context)  : {score['context']}/3 passed")
+            had = "no" if arm == "control" else "yes"
+            print(f"{LABEL[task]:12} {had:13} {str(got)[:22]:22} {str(expected)[:22]:22} {'pass' if ok else 'FAIL'}")
+    print("-" * 76)
+    print(f"AI WITHOUT the codebase's rules : {score['control']}/3 correct")
+    print(f"AI WITH the learned rules       : {score['context']}/3 correct")
     return 0
 
 
