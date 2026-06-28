@@ -35,8 +35,9 @@ def test_evolve_increments_version_and_bumps_score(monkeypatch, eval_fail):
     assert evolved.version == "0.2"  # incremented from 0.1, not the model's 0.9
     assert evolved.title == "Implement endpoint (refined)"
     assert "Add validation" in evolved.instructions
-    # Partial-progress eval nudges the score up by 5.
-    assert evolved.score == 75.0
+    # Partial-progress (failing) eval nudges the score up by 2, not 5 (a full
+    # pass would earn +5). Model proposed 70.0 -> 72.0.
+    assert evolved.score == 72.0
 
 
 def test_evolve_records_parent_in_provenance(monkeypatch, eval_fail):

@@ -1,6 +1,7 @@
-"""Gemini-powered skill extraction from failed task traces."""
+"""Skill extraction from task traces via the configured skill-model backend."""
 
 import json
+import logging
 import uuid
 from typing import Optional
 
@@ -15,6 +16,8 @@ from yunaki_skills.interfaces import (
     TriggerMatchOn,
     TriggerType,
 )
+
+logger = logging.getLogger(__name__)
 
 EXTRACTION_PROMPT = """You are a skill extraction engine for a coding agent. Analyze the following task execution and extract a reusable, actionable skill that would help the agent succeed on similar tasks in the future.
 
@@ -35,7 +38,7 @@ EVALUATION RESULT:
 - Tests: {tasks_passed}/{tasks_total} passed
 - Test output: {test_output}
 
-Based on this failure, extract a reusable skill as JSON with this exact schema:
+Based on this execution, extract a reusable skill as JSON with this exact schema:
 {{
   "id": "skill_<short_snake_case_name>",
   "title": "<human-readable title>",
@@ -146,12 +149,17 @@ class SkillExtractor(SkillExtractor):
         try:
             text = (skill_llm.complete_json(prompt) or "").strip()
             if not text:
+                logger.warning(
+                    "Skill extraction got an empty response from the skill model (backend=%s) — no skill created",
+                    skill_llm.active_model_label(),
+                )
                 return None
             data = json.loads(text)
             return self._build_skill(data, task_description)
         except (json.JSONDecodeError, ValueError, KeyError, Exception) as e:
-            # If extraction fails for any reason, return None (fail soft).
-            print(f"[SkillExtractor] Failed to extract skill: {e}")
+            # Fail soft (return None) but make it visible — a misbehaving backend
+            # must not silently stop the bank from learning.
+            logger.warning("Skill extraction failed to parse skill-model output: %s", e)
             return None
 
     @staticmethod

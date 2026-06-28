@@ -139,6 +139,8 @@ class LLMJudge:
 
         try:
             text = (skill_llm.complete_json(prompt) or "").strip()
+            if not text:
+                raise ValueError(f"empty response from skill model (backend={skill_llm.active_model_label()})")
             data = json.loads(text)
             scores = JudgeScores(
                 correctness=float(data["correctness"]),

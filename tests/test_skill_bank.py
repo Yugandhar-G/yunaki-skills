@@ -73,8 +73,9 @@ def test_search_semantic_ranks_relevant_first(skill_bank):
     assert results[0].id == "skill_users_endpoint"
 
 
-def test_search_semantic_breaks_ties_by_quality(skill_bank):
-    """At equal similarity, the higher-scoring skill ranks first."""
+def test_search_semantic_breaks_ties_by_quality(skill_bank, monkeypatch):
+    """At equal similarity, the higher-scoring skill ranks first (weighting on)."""
+    monkeypatch.setenv("YUNAKI_RANK_W_SCORE", "0.15")
     high = make_task_skill("skill_high", score=90.0)
     low = make_task_skill("skill_low", score=20.0)
     # Identical embedding text -> identical similarity; quality is the tiebreaker.
@@ -89,8 +90,9 @@ def test_search_semantic_breaks_ties_by_quality(skill_bank):
     assert results[0].id == "skill_high"
 
 
-def test_search_semantic_prefers_proven_skill(skill_bank):
-    """At equal similarity and score, a proven success record wins over neutral."""
+def test_search_semantic_prefers_proven_skill(skill_bank, monkeypatch):
+    """At equal similarity and score, a proven success record wins (weighting on)."""
+    monkeypatch.setenv("YUNAKI_RANK_W_RATE", "0.15")
     proven = make_task_skill("skill_proven", score=50.0)
     proven.usage_count = 10
     proven.success_count = 9  # 0.9 success rate
@@ -139,6 +141,38 @@ def test_search_pattern_skips_task_level(skill_bank, task_skill):
     """Task-level (semantic) skills must not be returned by pattern search."""
     skill_bank.add(task_skill)
     assert skill_bank.search_pattern("anything") == []
+
+
+def test_increment_usage_tracks_success(skill_bank, task_skill):
+    skill_bank.add(task_skill)
+    assert skill_bank.increment_usage(task_skill.id, success=True) is True
+    skill_bank.increment_usage(task_skill.id, success=False)
+    got = skill_bank.get(task_skill.id)
+    assert got.usage_count == 2
+    assert got.success_count == 1
+
+
+def test_increment_usage_missing_returns_false(skill_bank):
+    assert skill_bank.increment_usage("ghost", success=True) is False
+
+
+def test_set_status_transitions_and_archives(skill_bank, task_skill):
+    from yunaki_skills.interfaces import SkillStatus
+
+    skill_bank.add(task_skill)
+    assert skill_bank.set_status(task_skill.id, SkillStatus.REJECTED) is True
+    assert skill_bank.get(task_skill.id).status == SkillStatus.REJECTED
+    # the pre-change version is archived for the audit trail
+    assert skill_bank.get_history(task_skill.id)
+
+
+def test_namespace_filter_matches_legacy_missing_org_id(skill_bank, task_skill):
+    # A global-bank (org_id=None) query must see legacy docs that have no org_id
+    # field at all (MongoDB {field: null} matches both null and absent).
+    skill_bank.add(task_skill)
+    skill_bank._skills.update_one({"id": task_skill.id}, {"$unset": {"org_id": ""}})
+    assert skill_bank.get(task_skill.id) is not None
+    assert any(s.id == task_skill.id for s in skill_bank.list_all())
 
 
 def test_drop_removes_and_archives(skill_bank, task_skill):

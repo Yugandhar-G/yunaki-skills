@@ -586,7 +586,7 @@ async def api_run_start(req: RunRequest):
                 list_skills=_list_skills,
                 add_run=_add_run,
                 task_runner_cls=use_runner,
-                repo_id=req.repo_id,
+                org_id=req.org_id,
             )
         except Exception as e:  # already published as run_failed; log loudly
             print(f"[WARN] background run {run_id} errored: {e}")
