@@ -14,6 +14,9 @@
     finished: false,
     onComplete: null,
     seenSkills: new Set(),
+    // Tracks the control-arm score received via the control_arm event so
+    // skill_delta can be shown in the live panel before run_completed fires.
+    scoreControl: null,
   };
 
   function setStatus(mode, label) {
@@ -26,21 +29,53 @@
   function resetStage() {
     live.finished = false;
     live.seenSkills = new Set();
+    live.scoreControl = null;
     el("live-stage").classList.remove("hidden");
     el("run-result").classList.add("hidden");
     el("run-result").innerHTML = "";
     el("skill-flow").innerHTML = "";
     el("terminal-body").innerHTML = '<span class="cursor">▋</span>';
+    // Clear any live control-arm / skill-delta display from a previous run.
+    const ctrlBox = el("live-control-arm");
+    if (ctrlBox) ctrlBox.innerHTML = "";
     setScore(0);
     setProgress(0, 1);
   }
 
-  function setScore(score) {
+  function setScore(score, interpolated) {
     const node = el("live-score");
     if (!node) return;
     node.textContent = Math.round(score);
     node.classList.add("bump");
     setTimeout(() => node.classList.remove("bump"), 280);
+    // Dim the score label when the value is interpolated (synthesised curve,
+    // not a real measurement) so it's visually distinct.
+    if (interpolated) {
+      node.setAttribute("title", "Interpolated — not a real measurement");
+      node.style.opacity = "0.55";
+    } else {
+      node.removeAttribute("title");
+      node.style.opacity = "";
+    }
+  }
+
+  function showControlArm(scoreControl) {
+    // Display the control-arm score and live skill_delta in a small widget
+    // adjacent to the live score box.  Uses the existing #live-control-arm
+    // element (added to index.html); gracefully skips if the element is absent
+    // so the JS stays compatible with older dashboard HTML.
+    const box = el("live-control-arm");
+    if (!box) return;
+    const currentScore = parseFloat(el("live-score").textContent) || 0;
+    const delta = currentScore - scoreControl;
+    box.innerHTML =
+      `<span class="ctrl-label">Agent only:</span> ` +
+      `<span class="ctrl-val">${scoreControl.toFixed(0)}</span>` +
+      ` &nbsp;` +
+      `<span class="delta-badge ${delta < 0 ? "neg" : ""}">` +
+      `skill Δ ${delta >= 0 ? "+" : ""}${delta.toFixed(0)} pts` +
+      `</span>`;
+    box.removeAttribute("hidden");
   }
 
   function setProgress(iter, max) {
@@ -125,9 +160,19 @@
       case "run_started":
         setProgress(0, ev.max_iterations || 1);
         break;
+      case "control_arm":
+        // Emitted right after the real TaskRunner finishes, before the
+        // per-iteration replay.  Store it so we can show live skill_delta.
+        live.scoreControl = ev.score_control;
+        showControlArm(ev.score_control);
+        break;
       case "iteration":
         setProgress(ev.iteration, ev.max_iterations || 1);
-        if (typeof ev.score === "number") setScore(ev.score);
+        if (typeof ev.score === "number") {
+          // Pass the interpolated flag so the score display can be dimmed
+          // when the value is synthesised rather than measured.
+          setScore(ev.score, ev.interpolated === true);
+        }
         break;
       case "score_update":
         setScore(ev.score);
