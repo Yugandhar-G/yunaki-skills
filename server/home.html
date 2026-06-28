@@ -1,105 +1,113 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Skill Evolution · shared super memory</title>
+<title>skill-evolution · super-memory</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
  :root{
-   --bg:#06070b; --text:#eaf0f7; --dim:#97a3b4;
-   --glass:rgba(255,255,255,.055); --glass-strong:rgba(255,255,255,.085);
-   --hair:rgba(255,255,255,.12); --hair-soft:rgba(255,255,255,.07);
-   --a1:oklch(72% .17 162); --a2:oklch(70% .15 225); --a3:oklch(64% .2 292);
-   --display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
-   --body:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;
+   --paper:#f3f2ec; --ink:#0c0d0a; --line:#0c0d0a; --soft:#6b6b63;
+   --acc:#ff3b00;             /* single hot accent, no gradients */
+   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+   --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+   --grid:36px;
  }
  *{box-sizing:border-box}
- html,body{margin:0;min-height:100%}
- body{background:var(--bg);color:var(--text);font-family:var(--body);
-   -webkit-font-smoothing:antialiased;line-height:1.6;overflow-x:hidden;
-   display:grid;place-items:center;padding:7vh 5vw}
- /* ---- aurora mesh, sits behind the glass and shows through the blur ---- */
- .aurora{position:fixed;inset:-20vmax;z-index:-2;filter:blur(70px) saturate(135%);opacity:.9}
- .aurora i{position:absolute;display:block;border-radius:50%;mix-blend-mode:screen;animation:drift 26s ease-in-out infinite alternate}
- .aurora i:nth-child(1){width:46vmax;height:46vmax;left:-4vmax;top:-6vmax;background:radial-gradient(circle at 30% 30%,var(--a1),transparent 62%)}
- .aurora i:nth-child(2){width:42vmax;height:42vmax;right:-6vmax;top:2vmax;background:radial-gradient(circle at 60% 40%,var(--a2),transparent 62%);animation-duration:32s}
- .aurora i:nth-child(3){width:40vmax;height:40vmax;left:22vmax;bottom:-12vmax;background:radial-gradient(circle at 50% 50%,var(--a3),transparent 62%);animation-duration:38s}
- @keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(4vmax,3vmax,0) scale(1.12)}}
- /* faint grain for texture */
- .grain{position:fixed;inset:0;z-index:-1;opacity:.05;pointer-events:none;
-   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+ html,body{margin:0}
+ body{
+   background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;
+   /* visible engineering grid */
+   background-image:linear-gradient(#0c0d0a0d 1px,transparent 1px),linear-gradient(90deg,#0c0d0a0d 1px,transparent 1px);
+   background-size:var(--grid) var(--grid);
+   -webkit-font-smoothing:antialiased;min-height:100vh;padding:clamp(1rem,4vw,3rem);
+ }
+ .sheet{max-width:920px;margin:0 auto;border:1.5px solid var(--line);background:var(--paper)}
+ .lab{font-family:var(--mono);text-transform:uppercase;letter-spacing:.16em;font-size:.66rem;color:var(--soft)}
 
- main{max-width:880px;width:100%}
- .pill{display:inline-flex;align-items:center;gap:.5rem;font-size:.74rem;letter-spacing:.14em;
-   text-transform:uppercase;color:var(--text);padding:.4rem .85rem;border-radius:999px;
-   background:var(--glass);border:1px solid var(--hair);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
- .dot{width:8px;height:8px;border-radius:50%;background:var(--a1);box-shadow:0 0 12px var(--a1);animation:p 2.4s infinite}
- @keyframes p{0%{box-shadow:0 0 0 0 oklch(72% .17 162/.55)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+ /* title block (engineering-drawing header) */
+ .block{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+   padding:.7rem 1rem;border-bottom:1.5px solid var(--line);font-family:var(--mono);font-size:.74rem}
+ .block .id{font-weight:600;letter-spacing:.04em}
+ .block .status{display:inline-flex;align-items:center;gap:.5rem;text-transform:uppercase;letter-spacing:.12em}
+ .blip{width:9px;height:9px;background:var(--acc);display:inline-block;animation:blink 1.6s steps(1) infinite}
+ @keyframes blink{50%{opacity:.25}}
 
- h1{font-family:var(--display);font-weight:700;letter-spacing:-.025em;line-height:1.02;
-   font-size:clamp(2.5rem,1rem + 6vw,4.4rem);margin:1.5rem 0 .7rem}
- h1 em{font-style:normal;background:linear-gradient(100deg,var(--a1),var(--a2) 55%,var(--a3));
-   -webkit-background-clip:text;background-clip:text;color:transparent}
- .lede{color:var(--dim);font-size:1.14rem;max-width:60ch}
- .lede strong{color:var(--text);font-weight:600}
+ .pad{padding:clamp(1.4rem,4vw,2.6rem)}
+ h1{font-family:var(--mono);font-weight:600;letter-spacing:-.02em;line-height:1.06;
+   font-size:clamp(2rem,1rem + 5.5vw,3.7rem);margin:.2rem 0 1rem}
+ .mark{background:var(--acc);color:#fff;padding:0 .14em;font-weight:700}
+ .lede{font-size:clamp(1rem,.95rem + .4vw,1.18rem);max-width:62ch;color:#26261f}
+ .lede b{font-weight:600}
 
- .glass{background:var(--glass);border:1px solid var(--hair);border-radius:20px;
-   backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%);
-   box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 24px 60px -28px rgba(0,0,0,.8)}
+ /* stats as a spec readout with hard cell dividers */
+ .specs{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid var(--line);margin:2rem 0}
+ .specs div{padding:1rem;border-right:1.5px solid var(--line)}
+ .specs div:last-child{border-right:0}
+ .specs b{font-family:var(--mono);display:block;font-size:clamp(1.5rem,1rem + 2vw,2.2rem);font-weight:700;letter-spacing:-.02em}
+ .specs .lab{margin-top:.25rem;display:block}
+ @media(max-width:620px){.specs{grid-template-columns:repeat(2,1fr)}.specs div:nth-child(2){border-right:0}.specs div:nth-child(1),.specs div:nth-child(2){border-bottom:1.5px solid var(--line)}}
 
- .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin:2.4rem 0}
- @media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}
- .tile{padding:1.25rem 1.1rem;transition:transform .25s cubic-bezier(.16,1,.3,1),border-color .25s}
- .tile:hover{transform:translateY(-4px);border-color:var(--a1)}
- .tile b{font-family:var(--display);display:block;font-size:2.1rem;font-weight:600;
-   font-variant-numeric:tabular-nums;letter-spacing:-.02em;
-   background:linear-gradient(180deg,#fff,#bcd);-webkit-background-clip:text;background-clip:text;color:transparent}
- .tile span{color:var(--dim);font-size:.8rem}
+ /* pipeline drawn as a wired schematic */
+ .wire{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;border:1.5px solid var(--line);margin:1.4rem 0}
+ .node{font-family:var(--mono);font-size:.82rem;padding:.85rem 1rem;flex:1 1 140px;min-width:140px;
+   border-right:1.5px solid var(--line);display:flex;align-items:center;position:relative;background:var(--paper)}
+ .node:last-child{border-right:0}
+ .node.hot{color:var(--acc);font-weight:600}
+ .node .n{position:absolute;top:.4rem;left:.55rem;font-size:.6rem;color:var(--soft)}
+ .node::after{content:"▸";position:absolute;right:-9px;top:50%;transform:translateY(-50%);
+   color:var(--acc);font-size:.8rem;z-index:1}
+ .node:last-child::after{content:""}
+ @media(max-width:620px){.node{border-right:0;border-bottom:1.5px solid var(--line)}.node:last-child{border-bottom:0}.node::after{display:none}}
 
- .loop{padding:1.1rem 1.25rem;display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;margin:1.4rem 0}
- .loop .step{font-size:.92rem}
- .loop .step b{font-family:var(--display);font-weight:600}
- .loop .arrow{color:var(--a1);font-weight:700}
- .loop .grad{background:linear-gradient(100deg,var(--a1),var(--a3));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:600}
+ .api{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;font-family:var(--mono);font-size:.78rem;margin-top:1.6rem}
+ .api code{border:1.5px solid var(--line);padding:.35rem .55rem;background:#fff}
+ .api small{color:var(--soft);text-transform:uppercase;letter-spacing:.1em;font-size:.64rem}
 
- .api{display:flex;flex-wrap:wrap;gap:.55rem;align-items:center;margin-top:1.5rem}
- code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
-   padding:.4rem .65rem;border-radius:10px;background:rgba(0,0,0,.35);border:1px solid var(--hair-soft);color:var(--text)}
- .api small{color:var(--dim)}
- footer{margin-top:2.6rem;color:var(--dim);font-size:.82rem;border-top:1px solid var(--hair-soft);padding-top:1.2rem}
-
- @media(prefers-reduced-motion:reduce){.aurora i,.dot{animation:none}.tile{transition:none}}
+ footer{border-top:1.5px solid var(--line);padding:.7rem 1rem;font-family:var(--mono);
+   font-size:.68rem;color:var(--soft);display:flex;flex-wrap:wrap;gap:.4rem 1.2rem}
+ footer b{color:var(--ink);font-weight:600}
+ @media(prefers-reduced-motion:reduce){.blip{animation:none}}
 </style></head>
 <body>
- <div class="aurora"><i></i><i></i><i></i></div><div class="grain"></div>
- <main>
-  <span class="pill"><span class="dot"></span> live · self-evolving</span>
-  <h1>Skills that <em>keep learning</em> your repo.</h1>
-  <p class="lede">A shared super memory for coding-agent skills. Every merged PR and failing
-   test becomes a repo-specific fact, recalled into skills at load time — so your skills keep
-   evolving and the agents using them get better with every change.
-   <strong>No LLM in the learning loop. The skill files are never rewritten.</strong></p>
+ <div class="sheet">
+  <div class="block">
+   <span class="id">SKILL-EVOLUTION / super-memory</span>
+   <span class="status"><span class="blip"></span> live</span>
+  </div>
 
-  <section class="stats">
-   <div class="tile glass"><b>__FACTS__</b><span>facts learned</span></div>
-   <div class="tile glass"><b>__REPOS__</b><span>__REPO_WORD__ tracked</span></div>
-   <div class="tile glass"><b>0</b><span>LLM calls to learn</span></div>
-   <div class="tile glass"><b>PRs · tests</b><span>knowledge sources</span></div>
-  </section>
+  <div class="pad">
+   <div class="lab">repo-wide memory · deterministic · no-LLM</div>
+   <h1>Skills that <span class="mark">keep learning</span> your repo.</h1>
+   <p class="lede">Every merged PR and failing test becomes a repo-specific fact, recalled
+    into skills at load time — so your skills keep evolving and the agents using them get
+    better with every change. <b>No LLM in the learning loop. The skill files are never
+    rewritten.</b></p>
 
-  <section class="loop glass">
-   <span class="step">merged PR / failing test</span><span class="arrow">→</span>
-   <span class="step"><b>a deterministic fact</b></span><span class="arrow">→</span>
-   <span class="step">the skill <span class="grad">keeps evolving</span></span><span class="arrow">→</span>
-   <span class="step">the agents <span class="grad">evolve with it</span></span>
-  </section>
+   <div class="specs">
+    <div><b>__FACTS__</b><span class="lab">facts learned</span></div>
+    <div><b>__REPOS__</b><span class="lab">__REPO_WORD__ tracked</span></div>
+    <div><b>0</b><span class="lab">LLM calls to learn</span></div>
+    <div><b>PR·TEST</b><span class="lab">sources</span></div>
+   </div>
 
-  <section class="api">
-   <code>GET /health</code><code>GET /recall</code><small>per-repo token</small>
-   <code>POST /webhook</code><small>GitHub</small>
-  </section>
+   <div class="lab">pipeline</div>
+   <div class="wire">
+    <span class="node"><span class="n">01</span>merged PR / failing test</span>
+    <span class="node"><span class="n">02</span>deterministic fact</span>
+    <span class="node hot"><span class="n">03</span>skill keeps evolving</span>
+    <span class="node hot"><span class="n">04</span>agents evolve with it</span>
+   </div>
 
-  <footer>deployed on DigitalOcean · automatic HTTPS · per-repo tokens · self-evolving from PR webhooks</footer>
- </main>
+   <div class="api">
+    <code>GET /health</code><code>GET /recall</code><small>per-repo token</small>
+    <code>POST /webhook</code><small>github</small>
+   </div>
+  </div>
+
+  <footer>
+   <span><b>deployed</b> digitalocean</span><span><b>tls</b> automatic</span>
+   <span><b>auth</b> per-repo tokens</span><span><b>evolves</b> on pr webhook</span>
+  </footer>
+ </div>
 </body></html>
