@@ -43,13 +43,24 @@ have installed and reuses that tool's existing login, so you usually need **no**
 `GEMINI_API_KEY`.
 
 - **Supported backends:** `claude`, `codex`, `cursor-agent`, `gemini` (CLI), `aider`.
-- **Verified end-to-end:** `claude`. The others use the same documented headless
-  interface and should work, but are best-effort — run `yunaki doctor` and try a
-  task to confirm yours behaves.
 - **Override detection:** `YUNAKI_AGENT_BACKEND=<name>`. Force the in-process
   Gemini SDK (needs a key) with `YUNAKI_AGENT_BACKEND=gemini-sdk`.
 - The skill model (extract / evolve / judge) routes through the same backend by
   default; pin it to a specific Gemini model with `YUNAKI_SKILL_MODEL=gemini-2.5-flash`.
+
+### Backend verification status
+
+| Backend | Invocation | Parser | Status |
+|---------|-----------|--------|--------|
+| `claude` | `claude -p "<prompt>" --output-format json` | `claude_json` — `.result` from a single JSON object | **Verified end-to-end** (CI + real CLI) |
+| `cursor-agent` | `cursor-agent -p "<prompt>" --output-format json --force` | `cursor_json` — `.result` from `{"type":"result","result":"…"}` | **Schema verified** against the real binary; e2e smoke blocked by missing auth |
+| `codex` | `codex exec "<prompt>" --json` | `codex_jsonl` — only `item.completed` `agent_message` events (`.item.text`); reasoning/tool events skipped | **Best-effort** — schema verified vs openai/codex source; binary not installed here |
+| `gemini` | `gemini -p "<prompt>" --output-format json` | `gemini_json` — `.response` from `{"response":"…","error":null}` | **Best-effort** — schema verified vs google-gemini/gemini-cli source; binary not installed here |
+| `aider` | `aider --message "<prompt>" --yes-always` | `text` — strips the startup banner before the response | **Best-effort** — schema verified vs aider docs; binary not installed here |
+
+"Schema verified" = the parser was confirmed against the real CLI output format (from
+official source/docs) with realistic fixture tests. "Verified end-to-end" = additionally
+exercised against the actual running binary.
 
 ## Use it
 
