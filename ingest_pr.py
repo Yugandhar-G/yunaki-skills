@@ -159,15 +159,29 @@ def _pr_topic(files: list[dict]) -> str:
     return ranked[0]["path"]
 
 
+# Conventional-commit housekeeping types and branch-name-style merge titles carry no
+# convention an agent should follow ("chore: bump deps", "Feat/some-branch"), so PR titles and
+# commit subjects matching them never become facts. Review comments are exempt — a human is
+# stating a rule there.
+_LOW_SIGNAL_RE = re.compile(r"^(chore|docs|ci|build|test|style|revert|release|bump|merge)\b", re.I)
+
+
+def _is_low_signal(title: str) -> bool:
+    t = title.strip()
+    return "/" in t.split(":", 1)[0] or bool(_LOW_SIGNAL_RE.match(t))
+
+
 def extract_facts_from_pr(pr: dict) -> list[dict]:
     """Deterministic [{title, body, topic}] specs from a PR dict. No network, no LLM."""
     specs: list[dict] = []
     seen: set[tuple[str, str]] = set()
 
-    def add(title: str, body: str, topic: str) -> None:
+    def add(title: str, body: str, topic: str, gated: bool = False) -> None:
         title, body = _clean(title), _clean(body)
         if len(title) < _MIN_LEN:
             return
+        if gated and _is_low_signal(title):
+            return  # housekeeping/branch-noise PR title or commit subject — not a convention
         key = (title.lower(), topic)
         if key in seen:
             return
@@ -184,7 +198,8 @@ def extract_facts_from_pr(pr: dict) -> list[dict]:
     # are historical events, not current guidance, so they're topic-less (dedup + TTL only).
 
     # 1) PR title/body — the change summary, keyed to the most-changed file.
-    add(pr.get("title", ""), _first_line(pr.get("body", "")) or pr.get("title", ""), topic)
+    title = pr.get("title", "")
+    add(title, _first_line(pr.get("body", "")) or title, topic, gated=True)
 
     # 2) commit subjects — intent, conventional-commit-tagged (skip merge commits).
     commits = 0
@@ -194,7 +209,7 @@ def extract_facts_from_pr(pr: dict) -> list[dict]:
         msg = c.get("messageHeadline") or c.get("message") or ""
         if not msg or _MERGE_RE.match(msg.strip()):
             continue
-        add(msg, msg, "")
+        add(msg, msg, "", gated=True)
         commits += 1
 
     # 3) inline review comments — gotchas anchored to a file (topic = that file).

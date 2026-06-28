@@ -237,3 +237,40 @@ def test_run_never_raises_on_missing_binary(monkeypatch):
 
     monkeypatch.setattr(ingest_pr.subprocess, "run", boom)
     assert ingest_pr._run(["gh", "--version"]) is None
+
+
+def test_extract_drops_low_signal_titles_and_commits():
+    pr = {
+        "title": "Feat/ide agnostic godlevel loop",  # branch-name style -> dropped
+        "body": "",
+        "files": [{"path": "x.py", "additions": 1, "deletions": 0}],
+        "commits": [
+            {"messageHeadline": "chore: bump deps to latest"},  # housekeeping -> dropped
+            {"messageHeadline": "fix: clamp negative watermark offset"},  # substantive -> kept
+        ],
+        "review_comments": [],
+        "reviews": [],
+    }
+    titles = [s["title"] for s in ingest_pr.extract_facts_from_pr(pr)]
+    assert any("clamp negative watermark" in t for t in titles)
+    assert not any("godlevel" in t for t in titles)
+    assert not any("bump deps" in t for t in titles)
+
+
+def test_extract_keeps_review_comments_even_if_chore_like():
+    pr = {
+        "title": "chore: x",
+        "body": "",
+        "files": [],
+        "commits": [],
+        "review_comments": [
+            {
+                "body": "always validate input at the boundary here",
+                "path": "a.py",
+                "user": {"login": "alice"},
+            }
+        ],
+        "reviews": [],
+    }
+    titles = [s["title"] for s in ingest_pr.extract_facts_from_pr(pr)]
+    assert any("validate input at the boundary" in t for t in titles)
