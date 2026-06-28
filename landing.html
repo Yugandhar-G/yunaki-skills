@@ -88,6 +88,35 @@
  .node:last-child::after{content:""}
  @media(max-width:680px){.node{border-right:0;border-bottom:1.5px solid var(--line)}.node:last-child{border-bottom:0}.node::after{display:none}}
 
+ /* architecture diagram */
+ .arch{border:1.5px solid var(--line);margin-top:1.2rem;background:var(--paper)}
+ .arch-flow{display:grid;grid-template-columns:1fr auto 1.15fr auto 1fr;align-items:stretch}
+ .arch-col{display:flex;flex-direction:column}
+ .arch-col.mem{background:var(--panel)}
+ .arch-h{font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;font-size:.58rem;color:var(--soft);
+   padding:.5rem .7rem;border-bottom:1.5px solid var(--line)}
+ .arch-box{font-family:var(--mono);padding:.65rem .75rem;border-bottom:1.5px solid var(--line)}
+ .arch-box:last-child{border-bottom:0}
+ .arch-box b{display:block;font-size:.82rem;font-weight:600;letter-spacing:-.01em}
+ .arch-box span{display:block;font-size:.62rem;color:var(--soft);margin-top:.12rem}
+ .arch-box.big{flex:1;display:flex;flex-direction:column;justify-content:center}
+ .arch-box.hot b{color:var(--acc)}
+ .arch-box.hot span{color:var(--acc);opacity:.85}
+ .arch-arrow{display:flex;align-items:center;justify-content:center;color:var(--acc);font-size:1rem;
+   padding:0 .3rem;border-left:1.5px solid var(--line);border-right:1.5px solid var(--line)}
+ .arch-team{border-top:1.5px solid var(--line);background:var(--ink);color:var(--paper);
+   display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;padding:.7rem .8rem;font-family:var(--mono);font-size:.7rem}
+ .arch-team .tlab{color:#9c9c92;text-transform:uppercase;letter-spacing:.12em;font-size:.58rem;padding-right:.3rem}
+ .tnode{border:1.5px solid #3a3a32;padding:.28rem .5rem}
+ .tnode.hot{border-color:var(--acc);color:#fff}
+ .tsep{color:var(--acc)}
+ @media(max-width:760px){
+   .arch-flow{grid-template-columns:1fr}
+   .arch-arrow{display:none}
+   .arch-col{border-bottom:1.5px solid var(--line)}
+   .arch-col:last-child{border-bottom:0}
+ }
+
  /* proof */
  .proof{text-align:center}
  .proof .big{font-family:var(--mono);font-weight:700;letter-spacing:-.03em;line-height:1;
@@ -182,13 +211,41 @@
  <!-- HOW -->
  <section id="how"><div class="pad">
   <div class="secnum">§02</div><div class="h2">The skill stays fixed. The memory evolves.</div>
-  <p style="max-width:64ch">A skill is its <code>SKILL.md</code> (the human-written method) plus
-   the context it has learned. Two hooks drive the loop — and that's all that moves.</p>
-  <div class="wire">
-   <span class="node"><span class="n">01 · source</span>merged PR / failing test</span>
-   <span class="node"><span class="n">02 · ingest</span>deterministic fact <span style="color:var(--soft)">(no LLM)</span></span>
-   <span class="node"><span class="n">03 · recall</span>inlined into the skill at load</span>
-   <span class="node hot"><span class="n">04 · evolve</span>skill sharper, agent with it</span>
+  <p style="max-width:66ch">A skill is its <code>SKILL.md</code> (the human-written method) plus the
+   context it has learned. The whole system in one view: deterministic sources feed one
+   self-curating memory; any skill recalls it <b>at invocation</b>; a shared service keeps a team
+   in sync. <b>No LLM in the loop.</b></p>
+
+  <div class="arch">
+   <div class="arch-flow">
+    <div class="arch-col">
+     <div class="arch-h">sources · deterministic · no LLM</div>
+     <div class="arch-box"><b>codebase</b><span>codegraph.py — conventions from source</span></div>
+     <div class="arch-box"><b>merged PRs</b><span>ingest_pr.py — decisions &amp; reviews</span></div>
+     <div class="arch-box"><b>test failures</b><span>ingest.py — facts from red tests</span></div>
+     <div class="arch-box"><b>manual notes</b><span>remember.py — by hand</span></div>
+    </div>
+    <div class="arch-arrow">▶</div>
+    <div class="arch-col mem">
+     <div class="arch-h">super memory</div>
+     <div class="arch-box big"><b>provenance facts</b><span>markdown · source / ref / topic / dates</span></div>
+     <div class="arch-box big hot"><b>self-curating</b><span>dedup → supersede → prune</span></div>
+    </div>
+    <div class="arch-arrow">▶</div>
+    <div class="arch-col">
+     <div class="arch-h">serving · at invocation</div>
+     <div class="arch-box"><b>recall.py</b><span>skill-scoped · query-ranked</span></div>
+     <div class="arch-box hot"><b>SKILL.md + context</b><span>inlined above the method, every invoke</span></div>
+    </div>
+   </div>
+   <div class="arch-team">
+    <span class="tlab">team · org</span>
+    <span class="tnode">merged PR</span><span class="tsep">▶</span>
+    <span class="tnode">GitHub webhook</span><span class="tsep">▶</span>
+    <span class="tnode hot">server rebuilds · codegraph + ingest + consolidate</span><span class="tsep">▶</span>
+    <span class="tnode">shared store</span><span class="tsep">▶</span>
+    <span class="tnode">every dev recalls over HTTPS</span>
+   </div>
   </div>
   <div class="cols" style="margin-top:1.4rem;border:1.5px solid var(--line)">
    <div style="border-right:1.5px solid var(--line)"><div class="lab">on invocation</div><p style="margin:.4rem 0 0"><code>recall.py</code> runs at skill-load and inlines the skill's current repo context above the method — deterministic, skill-scoped.</p></div>
