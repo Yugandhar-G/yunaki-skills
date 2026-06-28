@@ -166,21 +166,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--skill",
         default=None,
-        help="scope to one skill; omit for repo-wide GLOBAL conventions every skill recalls",
+        help="scope to one skill; omit for GLOBAL conventions any invoked skill recalls",
     )
     args = p.parse_args(argv)
     graph = build_graph(args.root)
     if args.write:
         import facts  # local; keeps codegraph itself stdlib-only
 
-        # [] = global: recalled by EVERY skill on load, no tagging, no failure required.
-        # Repo-wide conventions are house rules — they belong to the repo, not one skill.
+        # [] = global: recalled by ANY skill when it is invoked, no tagging, no failure
+        # required. Repo-wide conventions are house rules; they belong to the repo, not one skill.
         skills = [args.skill] if args.skill else []
         paths = [
             facts.write_fact(skills, title, body, source="codebase", ref="codegraph", topic=conv)
             for conv, title, body in convention_facts(graph)
         ]
-        scope = f"skill '{args.skill}'" if args.skill else "GLOBAL: every skill recalls these"
+        scope = f"skill '{args.skill}'" if args.skill else "GLOBAL: recalled by any invoked skill"
         print(f"wrote {len(paths)} repo-convention facts · scope: {scope}")
         for pth in paths:
             print("  " + pth)

@@ -12,7 +12,7 @@
 #   ] } ] }
 #
 # Emits no additionalContext; it maintains bindings and refreshes the project's
-# code-derived conventions (backgrounded) so every skill recalls them on load.
+# code-derived conventions (backgrounded) so an invoked skill recalls them.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,7 +21,7 @@ SKILLS_DIR="${YUNAKI_SKILLS_DIR:-$HOME/.claude/skills}"
 
 "$PY" "$HERE/../binder.py" --all --skills-dir "$SKILLS_DIR" >/dev/null 2>&1 || true
 
-# Scan the project this session opened in for its conventions, so every skill recalls them
-# at load — no failure required. Backgrounded and non-fatal; never blocks session start.
+# Scan the project this session opened in for its conventions, so an invoked skill recalls
+# them, no failure required. Backgrounded and non-fatal; never blocks session start.
 ( "$PY" "$HERE/../codegraph.py" --write >/dev/null 2>&1 || true ) &
 exit 0

@@ -2,9 +2,9 @@
 # One-command setup for skill evolution — works for any user, any machine.
 #
 # Wires the always-on pieces using YOUR clone's absolute paths:
-#   1. binds every ~/.claude/skills/*/SKILL.md so it recalls repo context at load time
+#   1. binds every ~/.claude/skills/*/SKILL.md so it recalls repo context when invoked
 #   2. registers a SessionStart hook so newly-installed skills get bound automatically
-#   3. seeds the memory from this repo's code so skills recall its conventions on load —
+#   3. seeds the memory from this repo's code so an invoked skill recalls its conventions,
 #      before anything is ever run, and without waiting for a failure
 #
 # Idempotent and reversible (`./install.sh --uninstall`). Nothing is hardcoded to any
@@ -27,16 +27,16 @@ echo "Wiring skill evolution into ~/.claude ..."
 "$PY" "$HERE/binder.py" --all
 "$PY" "$HERE/register_hook.py"
 
-# Seed the memory from THIS repo's code so every skill recalls its conventions on load —
+# Seed the memory from THIS repo's code so an invoked skill recalls its conventions,
 # before anything is ever run, and without waiting for a failure.
 echo "Scanning this repo's code for conventions ..."
 ( cd "$HERE" && "$PY" "$HERE/codegraph.py" --write ) || true
 
 cat <<EOF
 
-Done. Every skill now recalls this machine's repo context at load time, new skills bind
-automatically each session, and this repo's conventions were scanned into memory so skills
-arrive loaded — no failure needed.
+Done. When you invoke a skill it now recalls this machine's repo context (no failure
+needed); new skills bind automatically each session; and this repo's conventions were
+scanned into memory, so an invoked skill arrives already loaded.
 
 Optional — turn on the self-evolving super memory inside any git repo you work in:
   cd /path/to/your/repo
