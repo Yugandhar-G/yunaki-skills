@@ -100,6 +100,18 @@
    padding:1rem 1.1rem;overflow-x:auto;margin:1rem 0 0;line-height:1.7}
  pre .c{color:#9c9c92}
  pre .a{color:var(--acc)}
+
+ /* console receipts */
+ .term{border:1.5px solid var(--line);margin-top:1.1rem;background:var(--ink)}
+ .term .bar{display:flex;align-items:center;gap:.4rem;padding:.45rem .7rem;border-bottom:1px solid #2b2b27;
+   font-family:var(--mono);font-size:.64rem;color:#9c9c92;letter-spacing:.05em}
+ .term .bar .d{width:8px;height:8px;border:1px solid #5a5a52;border-radius:50%;display:inline-block}
+ .term .bar span.t{margin-left:.4rem}
+ .term pre{margin:0;border:0;background:transparent;color:#e8e7df;font-size:clamp(.62rem,.55rem + .4vw,.74rem);line-height:1.7;padding:.85rem 1rem}
+ .term .ok{color:#36d399}
+ .term .no{color:#ff6a3d}
+ .term .k{color:var(--acc);font-weight:700}
+ .term .c{color:#8a8a80}
  .note{font-family:var(--mono);font-size:.72rem;color:var(--soft);margin-top:1rem}
 
  footer{padding:1rem;font-family:var(--mono);font-size:.7rem;color:var(--soft);
@@ -179,13 +191,55 @@
   </div>
  </div></section>
 
- <!-- PROOF -->
- <section id="proof"><div class="pad proof">
-  <div class="secnum">§03 · measured</div>
-  <div class="big">0/3 <span style="color:var(--soft)">→</span> <i>3/3</i></div>
-  <p>On a convention-decisive task with <b>real Claude agents and real pytest</b>: zero of
-   three passed with the skill alone — three of three after <b>one auto-learned fact</b>.
-   No LLM. The skill file never changed.</p>
+ <!-- PROOF + RECEIPTS -->
+ <section id="proof"><div class="pad">
+  <div class="secnum">§03 · proof — real runs, not mockups</div>
+  <div class="proof" style="margin:1.4rem 0 .4rem">
+   <div class="big">0/3 <span style="color:var(--soft)">→</span> <i>3/3</i></div>
+   <p>A convention-decisive task (underscore slugs) with <b>real Claude agents + real
+    pytest</b>: 0 of 3 passed with the skill alone, 3 of 3 after one auto-learned fact.
+    No LLM. The skill body never changed.</p>
+  </div>
+
+  <div class="lab" style="margin-top:1.8rem">receipts · captured from real runs</div>
+
+  <div class="term">
+   <div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">real Claude agents · no-context vs recalled-context, 3 conventions</span></div>
+   <pre><span class="c">$ a/b — same agent, only the recalled context differs</span>
+task       arm       produced        expect          ok
+slug       control   my-cool-title   my_cool_title   <span class="no">✗</span>
+slug       context   my_cool_title   my_cool_title   <span class="ok">✓</span>
+status     control   400             422             <span class="no">✗</span>
+status     context   422             422             <span class="ok">✓</span>
+timestamp  control   …12:00:00Z      …12:00:00Z      <span class="ok">✓</span>
+timestamp  context   …12:00:00Z      …12:00:00Z      <span class="ok">✓</span>
+<span class="c">──────────────────────────────────────────────</span>
+control (no learned context) : <span class="k">1/3</span>
+context (recalled context)   : <span class="k">3/3</span>  <span class="c">← the 2 unguessable conventions, fixed</span></pre>
+  </div>
+
+  <div class="term">
+   <div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">one skill learns three conventions · deterministic · no LLM</span></div>
+   <pre><span class="c">$ ./demo/skill-evolves.sh</span>
+recall repo-conventions  <span class="c">→ (empty)</span>
+<span class="no">✗</span> slug        'my-cool-title' != 'my_cool_title'   <span class="c">→ learned</span>
+<span class="no">✗</span> status      400 != 422                            <span class="c">→ learned</span>
+<span class="no">✗</span> timestamps  +00:00 != …Z                          <span class="c">→ learned</span>
+recall repo-conventions  →
+  - Convention: slugify uses underscores not hyphens
+  - Convention: validation errors use 422 not 400
+  - Convention: timestamps use z suffix not offset
+SKILL.md body: <span class="ok">unchanged</span>   <span class="c">· 3 facts · 0 LLM calls</span></pre>
+  </div>
+
+  <div class="term">
+   <div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">shared memory · live over real HTTPS</span></div>
+   <pre><span class="c">$ curl -H 'authorization: bearer ***' https://…sslip.io/recall?skill=code-review</span>
+  - ci: name job to match required status checks, add advisory mypy
+  - feat: live landing page + reproducible 3-min demo
+  - ci: align required check name + untrack CLAUDE.md
+<span class="c"># 45 facts · per-repo token · fed by a GitHub PR webhook</span></pre>
+  </div>
  </div></section>
 
  <!-- DEPLOY -->
