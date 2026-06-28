@@ -19,3 +19,4 @@ corpus.json
 
 # local agent/worktree state
 .claude/
+CLAUDE.md
