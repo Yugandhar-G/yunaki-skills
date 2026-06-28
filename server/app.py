@@ -17,10 +17,12 @@ is partitioned and individually revocable.
 
 from __future__ import annotations
 
+import glob
 import os
 import re
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 
 import consolidate
 import facts
@@ -60,9 +62,45 @@ def _ingest_repo(repo: str, root: str) -> None:
         return
 
 
+def _store_stats(root: str) -> dict:
+    """Aggregate, non-sensitive stats for the landing page: how many facts, across how
+    many repos. (Fact CONTENT stays behind per-repo tokens; only counts are public.)"""
+    files = glob.glob(os.path.join(root, "**", "facts", "*.md"), recursive=True)
+    repos: set[str] = set()
+    for f in files:
+        parts = os.path.relpath(f, root).split(os.sep)
+        if "facts" in parts:
+            repos.add("/".join(parts[: parts.index("facts")]))
+    return {"facts": len(files), "repos": len(repos)}
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/stats")
+def stats() -> dict:
+    return _store_stats(_data_dir())
+
+
+_HOME_TEMPLATE = ""
+try:
+    with open(os.path.join(os.path.dirname(__file__), "home.html"), encoding="utf-8") as _fh:
+        _HOME_TEMPLATE = _fh.read()
+except OSError:
+    _HOME_TEMPLATE = "<h1>yunaki super-memory</h1><p>live</p>"
+
+
+@app.get("/", response_class=HTMLResponse)
+def home() -> HTMLResponse:
+    s = _store_stats(_data_dir())
+    html = (
+        _HOME_TEMPLATE.replace("__FACTS__", str(s["facts"]))
+        .replace("__REPOS__", str(s["repos"]))
+        .replace("__REPO_WORD__", "repo" if s["repos"] == 1 else "repos")
+    )
+    return HTMLResponse(content=html)
 
 
 @app.get("/recall")
