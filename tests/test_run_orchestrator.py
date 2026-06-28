@@ -24,6 +24,8 @@ import pytest
 from yunaki_skills.interfaces import TaskResult
 from yunaki_skills.live_runs import RunEventBroker
 from yunaki_skills.run_orchestrator import (
+    _SIMULATED_STATUS,
+    RealRunnerUnavailableError,
     _emit_skill_events,
     _run_stub,
     _stream_agent_output,
@@ -77,11 +79,18 @@ async def _run_and_collect(
     runner_cls=None,
     list_skills=_list_skills_empty,
     add_run=_add_run_noop,
+    allow_simulated: bool = True,
 ) -> list[dict[str, Any]]:
     """Run execute_run while collecting all events via a subscriber queue.
 
     subscribe() before the run so the broker retains history. Without a
     subscriber the broker purges history on finish(), leaving nothing to assert.
+
+    Stub-path tests pass ``runner_cls=None`` with the default
+    ``allow_simulated=True`` to exercise the explicitly opted-in SIMULATED path.
+    The default-silent-stub path no longer exists: an unavailable runner without
+    opt-in now fails loud (RealRunnerUnavailableError), which is covered by a
+    dedicated test below.
     """
     queue = broker.subscribe(run_id)
     try:
@@ -93,6 +102,7 @@ async def _run_and_collect(
             list_skills=list_skills,
             add_run=add_run,
             task_runner_cls=runner_cls,
+            allow_simulated=allow_simulated,
         )
     finally:
         broker.unsubscribe(run_id, queue)
@@ -216,6 +226,7 @@ async def test_stub_path_run_completed_has_none_scores(fresh_broker):
             list_skills=_list_skills_empty,
             add_run=collected.append,
             task_runner_cls=None,
+            allow_simulated=True,
         )
     finally:
         fresh_broker.unsubscribe("run-008", queue)
@@ -304,7 +315,7 @@ async def test_run_stub_records_run(fresh_broker):
         "stub2", "task2", max_iterations=1, broker=fresh_broker, list_skills=lambda: [], add_run=runs.append
     )
     assert len(runs) == 1
-    assert runs[0]["status"] == "simulated"
+    assert runs[0]["status"] == _SIMULATED_STATUS
     assert runs[0]["simulated"] is True
     assert runs[0]["score_before"] is None
     assert runs[0]["score_after"] is None
@@ -393,3 +404,28 @@ async def test_execute_run_propagates_exception_and_publishes_run_failed(fresh_b
         )
     assert "run_failed" in [e["type"] for e in fresh_broker.history("err1")]
     fresh_broker.unsubscribe("err1", queue)
+
+
+# ─── execute_run: no real runner + no opt-in must fail loud ──────────────────
+
+
+async def test_execute_run_fails_loud_when_no_runner_and_not_opted_in(fresh_broker):
+    """Integrity guard: no real TaskRunner and allow_simulated=False must NOT
+    silently fall back to the stub. It must raise and emit run_failed — never
+    fabricate a run."""
+    queue = fresh_broker.subscribe("noopt1")
+    with pytest.raises(RealRunnerUnavailableError):
+        await execute_run(
+            "noopt1",
+            "task",
+            1,
+            broker=fresh_broker,
+            list_skills=_list_skills_empty,
+            add_run=_add_run_noop,
+            task_runner_cls=None,
+            allow_simulated=False,
+        )
+    types = [e["type"] for e in fresh_broker.history("noopt1")]
+    assert "run_failed" in types, "must publish run_failed on loud refusal"
+    assert "run_completed" not in types, "must NOT complete a fabricated run"
+    fresh_broker.unsubscribe("noopt1", queue)

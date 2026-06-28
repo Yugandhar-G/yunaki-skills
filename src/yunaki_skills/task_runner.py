@@ -31,6 +31,7 @@ from yunaki_skills.agent_factory import build_agent
 from yunaki_skills.contrastive_runner import ContrastiveRunner, rollouts_from_env
 from yunaki_skills.eval_scorer import EvalScorer
 from yunaki_skills.interfaces import (
+    ABResult,
     AgentClient,
     EvalResult,
     Skill,
@@ -55,6 +56,17 @@ def _truthy(value: str) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _mean(values: list[float]) -> Optional[float]:
+    """Arithmetic mean rounded to 1dp, or None for an empty list.
+
+    None (not 0.0) signals "no measurement" so an arm with zero runnable
+    rollouts cannot masquerade as a real 0% score.
+    """
+    if not values:
+        return None
+    return round(sum(values) / len(values), 1)
+
+
 def _snapshot_workspace(workspace: str) -> str:
     """Copy the whole workspace tree to a sibling temp dir and return its path.
 
@@ -71,50 +83,6 @@ def _restore_workspace(workspace: str, snapshot: str) -> None:
     """Revert the workspace to the snapshot, discarding any agent edits."""
     shutil.rmtree(workspace, ignore_errors=True)
     shutil.copytree(snapshot, workspace)
-
-
-def _demo_handicap_clause(iteration: int) -> str:
-    """Staged demo constraint — DISABLED by default.
-
-    **WARNING**: This function deliberately degrades the agent's output to
-    produce a rising improvement curve. The curve measures the handicap
-    being lifted, NOT the skills working.  It is a SCRIPTED WALKTHROUGH,
-    not evidence of self-evolution.
-
-    It must NEVER be enabled for any result that claims to measure skill
-    effectiveness.  It exists solely for choreographed live demos where
-    the audience is told explicitly that the sequence is staged.
-
-    To enable (ONLY for scripted walkthroughs):
-      YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH=1
-      YUNAKI_DEMO_HANDICAP=1,2  (iter1 does 1 item, iter2 does 2, iter3+ unconstrained)
-
-    The env var name is intentionally long and self-documenting so that
-    nobody enables it by accident.
-    """
-    if not _truthy(os.environ.get("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", "")):
-        return ""
-
-    raw = os.environ.get("YUNAKI_DEMO_HANDICAP", "1,2")
-    try:
-        schedule = [int(x) for x in raw.split(",") if x.strip()]
-    except ValueError:
-        schedule = [1, 2]
-
-    if iteration < 1 or iteration > len(schedule):
-        return ""
-
-    k = schedule[iteration - 1]
-    return (
-        "\n\n[STAGED WALKTHROUGH CONSTRAINT — NOT A REAL MEASUREMENT] "
-        "The task above lists several required "
-        f"items. In THIS pass, implement ONLY the first {k} item(s) in "
-        "the exact order they are listed in the task. Do NOT add the remaining "
-        "items — leave them entirely unimplemented. "
-        "This staging is intentional; a later pass will add the rest. "
-        "NOTE: Any improvement curve from this run is the constraint being "
-        "lifted, not evidence that skills caused the improvement."
-    )
 
 
 class TaskRunner(ITaskRunner):
@@ -199,6 +167,174 @@ class TaskRunner(ITaskRunner):
         except Exception as e:
             logger.warning("Learn-on-success store failed: %s", e)
             return None
+
+    def run_ab(
+        self,
+        task_description: str,
+        code_snapshot: str = "",
+        test_command: Optional[list[str]] = None,
+        n_rollouts: int = 3,
+        max_iterations: int = 1,
+        progress: Optional[Callable[[dict], None]] = None,
+    ) -> ABResult:
+        """Controlled A/B measurement of skill value on a single task.
+
+        Both arms start from the IDENTICAL baseline workspace and run the same
+        agent `n_rollouts` times. The control arm injects NO skills; the
+        treatment arm injects the retrieved task-level skills. Reporting
+        `skill_lift = treatment_mean - control_mean` isolates the skill effect
+        from raw agent capability — the product thesis.
+
+        Means are over RUNNABLE rollouts only (EvalResult.runnable), so one
+        import error does not zero an arm. `max_iterations` is reserved for a
+        future multi-pass arm; each rollout currently runs the agent once from
+        the shared baseline.
+        """
+        if n_rollouts < 1:
+            raise ValueError(f"n_rollouts must be >= 1, got {n_rollouts}")
+
+        workspace = tempfile.mkdtemp(prefix="yunaki_ab_")
+        if code_snapshot:
+            with open(os.path.join(workspace, _SNAPSHOT_FILENAME), "w") as f:
+                f.write(code_snapshot)
+        snapshot_dir = _snapshot_workspace(workspace)
+
+        try:
+            return self._run_ab_in_workspace(
+                task_description=task_description,
+                workspace=workspace,
+                snapshot_dir=snapshot_dir,
+                test_command=test_command,
+                n_rollouts=n_rollouts,
+                progress=progress,
+            )
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
+
+    def _run_ab_in_workspace(
+        self,
+        task_description: str,
+        workspace: str,
+        snapshot_dir: str,
+        test_command: Optional[list[str]],
+        n_rollouts: int,
+        progress: Optional[Callable[[dict], None]],
+    ) -> ABResult:
+        logger.info("A/B run: task=%r n_rollouts=%d", task_description, n_rollouts)
+        self._emit(
+            progress,
+            {"type": "ab_start", "task_description": task_description, "n_rollouts": n_rollouts},
+        )
+
+        # ── Control arm: agent WITHOUT skills ──────────────────────────────
+        print(f"\n[A/B] Control arm: {n_rollouts} rollouts WITHOUT skills...")
+        control_scores = self._run_arm(
+            task_description=task_description,
+            skills=[],
+            workspace=workspace,
+            snapshot_dir=snapshot_dir,
+            test_command=test_command,
+            n_rollouts=n_rollouts,
+            arm="control",
+            progress=progress,
+        )
+
+        # ── Retrieve skills ONCE for the treatment arm ─────────────────────
+        task_skills = self._retriever.retrieve_for_task(task_description)
+        skill_ids = [s.id for s in task_skills]
+        print(f"[A/B] Treatment arm: {n_rollouts} rollouts WITH skills {skill_ids}...")
+        treatment_scores = self._run_arm(
+            task_description=task_description,
+            skills=task_skills,
+            workspace=workspace,
+            snapshot_dir=snapshot_dir,
+            test_command=test_command,
+            n_rollouts=n_rollouts,
+            arm="treatment",
+            progress=progress,
+        )
+
+        control_mean = _mean(control_scores)
+        treatment_mean = _mean(treatment_scores)
+        skill_lift = (
+            round(treatment_mean - control_mean, 1)
+            if control_mean is not None and treatment_mean is not None
+            else None
+        )
+
+        result = ABResult(
+            task_description=task_description,
+            n_rollouts=n_rollouts,
+            control_mean=control_mean,
+            treatment_mean=treatment_mean,
+            skill_lift=skill_lift,
+            control_scores=control_scores,
+            treatment_scores=treatment_scores,
+            control_runnable_rate=round(len(control_scores) / n_rollouts, 3),
+            treatment_runnable_rate=round(len(treatment_scores) / n_rollouts, 3),
+            skills_used=skill_ids,
+        )
+        print(
+            f"[A/B] control={control_mean} treatment={treatment_mean} "
+            f"lift={skill_lift} (runnable {result.control_runnable_rate}/{result.treatment_runnable_rate})"
+        )
+        self._emit(progress, {"type": "ab_complete", **result.model_dump()})
+        return result
+
+    def _run_arm(
+        self,
+        task_description: str,
+        skills: list[Skill],
+        workspace: str,
+        snapshot_dir: str,
+        test_command: Optional[list[str]],
+        n_rollouts: int,
+        arm: str,
+        progress: Optional[Callable[[dict], None]],
+    ) -> list[float]:
+        """Run one A/B arm n_rollouts times; return RUNNABLE scores only.
+
+        Each rollout restores the shared baseline so every rollout (and both
+        arms) starts from identical state. Agent crashes and not-runnable
+        rollouts are excluded from the returned scores (but counted against the
+        runnable rate by the caller via n_rollouts).
+        """
+        scores: list[float] = []
+        for i in range(1, n_rollouts + 1):
+            _restore_workspace(workspace, snapshot_dir)
+            try:
+                self._agent.run_task(
+                    task_description=task_description,
+                    skills=skills,
+                    repo_path=workspace,
+                )
+            except Exception as e:
+                logger.warning("[%s] rollout %d agent failed: %s", arm, i, e)
+                self._emit(
+                    progress,
+                    {"type": "ab_rollout", "arm": arm, "rollout": i, "runnable": False, "error": str(e)},
+                )
+                continue
+
+            eval_result = self._scorer.evaluate(
+                task_description, test_command=test_command, workspace=workspace
+            )
+            if eval_result.runnable:
+                scores.append(eval_result.score)
+            else:
+                logger.info("[%s] rollout %d not runnable: %s", arm, i, eval_result.details)
+            self._emit(
+                progress,
+                {
+                    "type": "ab_rollout",
+                    "arm": arm,
+                    "rollout": i,
+                    "runnable": eval_result.runnable,
+                    "score": eval_result.score,
+                },
+            )
+        return scores
 
     def run(
         self,
@@ -395,9 +531,7 @@ class TaskRunner(ITaskRunner):
             )
 
             # ─── Step 4: Run agent with injected skills ──────────────────
-            iter_task = task_description + _demo_handicap_clause(iteration)
-            if iter_task != task_description:
-                print(f"  [demo] Staged constraint active for iteration {iteration}")
+            iter_task = task_description
             print(f"  [4] Running agent with {len(task_skills)} skills...")
             # Skills actually applied this iteration (for usage accounting).
             applied_skills = list(task_skills)

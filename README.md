@@ -1,10 +1,15 @@
 # Yunaki Skills
 
-Coding agents repeat the same mistakes across runs. Yunaki gives them a memory:
-it watches an agent attempt a task, scores the result with real tests, and turns
-what it learns into small reusable **skills**. Those skills get injected into
-future attempts, so the agent measurably improves instead of starting from zero
-every time.
+Coding agents repeat the same *systematic mistakes* across runs. Yunaki gives them
+a memory: it watches an agent attempt a task, scores the result with real tests,
+and turns its recurring failure mode into a small reusable **skill**. That skill is
+injected into future attempts so the agent stops making the same class of mistake,
+and — crucially — the fix carries over to *different* tasks that share the failure mode.
+
+This is not "the model gets smarter." It is narrower and more honest: **Yunaki learns
+an agent's repeated blind spot and encodes the fix.** The measured gains are
+reliability-driven (the agent stops shipping broken code), not emergent reasoning.
+See [Evidence](#evidence) for exactly what we measured and where it does and doesn't help.
 
 ## How it works
 
@@ -27,6 +32,31 @@ Each run does this:
    only number that proves the skills helped, as opposed to "the agent could
    already do it." Yunaki deliberately does not headline the flattering
    before/after delta.
+
+## Evidence
+
+All numbers below come from the real loop (Claude as the skill-manager, a frozen
+Gemini agent as the coding policy), scored by real pytest. Scoring separates "code
+didn't even run" from "ran but failed," so a single import error can't silently
+zero a run. **Raw lift** counts broken code as 0%; that is the honest number.
+
+| Experiment | Result | Reliability (runnable rate) |
+|---|---|---|
+| Self-extracted skill on a REST users API | **+40pp raw**, replicated at +39pp | 42% → 100% |
+| **Pure cross-task transfer** (skill learned on users, *frozen*, applied to a products API it never saw) | **+24pp raw** | 38% → 88% |
+| Clean algorithmic task (stats lib) | **no measurable lift** | agent already at 100% |
+
+**What this shows:** an automatically-extracted skill genuinely helps, and it
+*transfers* to a different task without re-tuning. The gains come from fixing a
+systematic failure mode (the agent shipping non-importable FastAPI code), which is
+why the win transfers across tasks that share that failure mode — and why the clean
+algorithmic task shows nothing (the agent has no blind spot there).
+
+**What this does not yet show (honest limitations):**
+- This is *near* transfer (same domain, shared failure mode), not far transfer.
+- Gains are reliability-driven; correctness of already-working code barely moves.
+- n=8 per arm, few seeds. Directional with a clear mechanism — statistical hardening
+  (more seeds, more task families, error bars) is the roadmap, not a finished claim.
 
 ## Install
 

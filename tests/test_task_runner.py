@@ -162,24 +162,15 @@ def test_agent_exception_does_not_crash_loop(monkeypatch, components, eval_fail)
     assert result.score_after == eval_fail.score
 
 
-def test_demo_handicap_clause_appends_constraint(monkeypatch):
-    monkeypatch.setenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", "1")
-    monkeypatch.setenv("YUNAKI_DEMO_HANDICAP", "1,2")
-    clause1 = tr._demo_handicap_clause(1)
-    clause3 = tr._demo_handicap_clause(3)
-    assert "first 1 item" in clause1
-    assert "NOT A REAL MEASUREMENT" in clause1  # Must be unmistakably labeled
-    assert clause3 == ""  # past the schedule
-
-
-def test_demo_handicap_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", raising=False)
-    assert tr._demo_handicap_clause(1) == ""
+def test_no_demo_handicap_mechanism_exists():
+    """The staged-walkthrough handicap was removed entirely. Guard against it
+    ever returning: there must be no mechanism that degrades the agent to
+    manufacture an improvement curve."""
+    assert not hasattr(tr, "_demo_handicap_clause")
 
 
 def test_injected_agent_is_used_over_default(monkeypatch, components, eval_fail, eval_pass):
     """An agent passed via the DI seam must be used instead of the built default."""
-    monkeypatch.delenv("YUNAKI_DEMO_HANDICAP_STAGED_WALKTHROUGH", raising=False)
     monkeypatch.setattr(tr, "SkillBank", lambda *a, **k: components["bank"])
     monkeypatch.setattr(tr, "SkillExtractor", lambda: components["extractor"])
     monkeypatch.setattr(tr, "SkillEvolver", lambda: components["evolver"])
@@ -254,6 +245,143 @@ def test_control_arm_reset_restores_full_tree(monkeypatch, components, eval_fail
     # original materialized file restored.
     assert "garbage.py" not in seen["skilled_files"]
     assert tr._SNAPSHOT_FILENAME in seen["skilled_files"]
+
+
+# ─── A/B control-arm tests ────────────────────────────────────────────────────
+
+
+def _eval(score, runnable=True, passed=False):
+    from yunaki_skills.interfaces import EvalResult
+
+    return EvalResult(
+        passed=passed,
+        score=score,
+        runnable=runnable,
+        tasks_passed=int(score / 100 * 10),
+        tasks_total=10,
+    )
+
+
+def test_run_ab_computes_lift(monkeypatch, components):
+    # control: 3 rollouts @ 40, treatment: 3 rollouts @ 70 -> lift +30
+    control = [_eval(40), _eval(40), _eval(40)]
+    treatment = [_eval(70), _eval(70), _eval(70)]
+    components["scorer"].evaluate.side_effect = control + treatment
+    components["retriever"].retrieve_for_task.return_value = [make_task_skill("skill_x")]
+    components["agent"].run_task.return_value = "trace"
+
+    runner = build_runner(monkeypatch, components)
+    result = runner.run_ab("task", n_rollouts=3)
+
+    assert result.control_mean == 40.0
+    assert result.treatment_mean == 70.0
+    assert result.skill_lift == 30.0
+    assert result.control_scores == [40.0, 40.0, 40.0]
+    assert result.treatment_scores == [70.0, 70.0, 70.0]
+    assert result.control_runnable_rate == 1.0
+    assert result.treatment_runnable_rate == 1.0
+    assert result.skills_used == ["skill_x"]
+
+
+def test_run_ab_excludes_not_runnable_from_mean(monkeypatch, components):
+    # control rollout 2 is NOT runnable (import error) -> excluded from mean.
+    control = [_eval(50), _eval(0, runnable=False), _eval(50)]
+    treatment = [_eval(80), _eval(80), _eval(80)]
+    components["scorer"].evaluate.side_effect = control + treatment
+    components["retriever"].retrieve_for_task.return_value = []
+    components["agent"].run_task.return_value = "trace"
+
+    runner = build_runner(monkeypatch, components)
+    result = runner.run_ab("task", n_rollouts=3)
+
+    # Mean over runnable only: (50+50)/2 = 50, NOT (50+0+50)/3.
+    assert result.control_mean == 50.0
+    assert result.control_scores == [50.0, 50.0]
+    assert result.control_runnable_rate == round(2 / 3, 3)
+    assert result.treatment_mean == 80.0
+
+
+def test_run_ab_agent_crash_does_not_zero_arm(monkeypatch, components):
+    # treatment rollout 1 crashes; remaining two still score.
+    components["scorer"].evaluate.side_effect = [
+        _eval(30),  # control 1
+        _eval(30),  # control 2
+        # treatment: rollout 1 crashes (no scorer call), 2 and 3 evaluate
+        _eval(90),
+        _eval(90),
+    ]
+    components["retriever"].retrieve_for_task.return_value = []
+
+    calls = {"n": 0}
+
+    def run_task(task_description, skills, repo_path):
+        calls["n"] += 1
+        # 3rd overall call (treatment rollout 1) crashes.
+        if calls["n"] == 3:
+            raise RuntimeError("model down")
+        return "trace"
+
+    components["agent"].run_task.side_effect = run_task
+
+    runner = build_runner(monkeypatch, components)
+    result = runner.run_ab("task", n_rollouts=2)
+
+    assert result.control_mean == 30.0
+    assert result.treatment_scores == [90.0]  # only the non-crashed rollout
+    assert result.treatment_runnable_rate == 0.5
+
+
+def test_run_ab_all_not_runnable_gives_none_mean(monkeypatch, components):
+    components["scorer"].evaluate.side_effect = [
+        _eval(0, runnable=False),
+        _eval(0, runnable=False),
+        _eval(50),
+        _eval(50),
+    ]
+    components["retriever"].retrieve_for_task.return_value = []
+    components["agent"].run_task.return_value = "trace"
+
+    runner = build_runner(monkeypatch, components)
+    result = runner.run_ab("task", n_rollouts=2)
+
+    # Control arm had zero runnable rollouts -> None mean, None lift.
+    assert result.control_mean is None
+    assert result.skill_lift is None
+    assert result.treatment_mean == 50.0
+    assert result.control_runnable_rate == 0.0
+
+
+def test_run_ab_rejects_zero_rollouts(monkeypatch, components):
+    runner = build_runner(monkeypatch, components)
+    with pytest.raises(ValueError):
+        runner.run_ab("task", n_rollouts=0)
+
+
+def test_run_ab_both_arms_start_from_same_baseline(monkeypatch, components):
+    """Every rollout in both arms must see the original materialized file and
+    none of a prior rollout's pollution."""
+    components["scorer"].evaluate.side_effect = [_eval(50)] * 4
+    components["retriever"].retrieve_for_task.return_value = []
+
+    seen_files: list[list[str]] = []
+
+    def run_task(task_description, skills, repo_path):
+        seen_files.append(sorted(os.listdir(repo_path)))
+        # Pollute so a missing reset would leak into the next rollout.
+        with open(os.path.join(repo_path, "junk.py"), "w") as f:
+            f.write("# junk\n")
+        return "trace"
+
+    components["agent"].run_task.side_effect = run_task
+
+    runner = build_runner(monkeypatch, components)
+    runner.run_ab("task", code_snapshot="print('hi')\n", n_rollouts=2)
+
+    # 4 rollouts (2 control + 2 treatment); each starts clean.
+    assert len(seen_files) == 4
+    for files in seen_files:
+        assert tr._SNAPSHOT_FILENAME in files
+        assert "junk.py" not in files  # prior rollout's pollution was reset
 
 
 def test_default_agent_built_via_factory(monkeypatch, components):

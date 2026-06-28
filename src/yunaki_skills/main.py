@@ -38,7 +38,7 @@ from yunaki_skills.config import build_mongo_uri
 # ─── Config ────────────────────────────────────────────────────────────────
 from yunaki_skills.config import get as cfg
 from yunaki_skills.live_runs import STREAM_DONE, broker
-from yunaki_skills.run_orchestrator import execute_run
+from yunaki_skills.run_orchestrator import _SIMULATED_STATUS, execute_run
 from yunaki_skills.skill_bank import SkillBank
 
 logger = logging.getLogger(__name__)
@@ -570,11 +570,27 @@ async def api_run_start(req: RunRequest):
     """
     run_id = uuid4().hex[:12]
 
-    # YUNAKI_FORCE_STUB_RUN forces the simulated evolution loop instead of the
-    # real (Gemini + pytest) runner — lets the dashboard be demoed/tested live
-    # without API cost. Consistent with the existing no-Mongo/no-Gemini stubs.
-    force_stub = str(cfg("YUNAKI_FORCE_STUB_RUN", "false")).strip().lower() in {"1", "true", "yes", "on"}
-    use_runner = TaskRunner if (_real_task_runner and not force_stub) else None
+    # YUNAKI_ALLOW_SIMULATED is the ONLY way to get simulated/demo runs. It is
+    # opt-in, never the default. Every simulated record is loudly labelled
+    # (status="SIMULATED", simulated=True) and logged as a WARNING. Without it,
+    # an unavailable real runner is a loud failure (run_failed event), not a
+    # silent fabricated curve.
+    allow_simulated = str(cfg("YUNAKI_ALLOW_SIMULATED", "false")).strip().lower() in {"1", "true", "yes", "on"}
+    use_runner = TaskRunner if _real_task_runner else None
+
+    if use_runner is None and not allow_simulated:
+        # Fail loud at the boundary instead of starting a run that can only fake.
+        logger.error(
+            "Refusing /api/run/start: no real TaskRunner and YUNAKI_ALLOW_SIMULATED unset"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No real TaskRunner available. Set GEMINI_API_KEY + MONGODB_URI "
+                "for live runs, or YUNAKI_ALLOW_SIMULATED=1 for an explicitly "
+                "labelled SIMULATED demo. No silent fabricated fallback."
+            ),
+        )
 
     async def _runner():
         try:
@@ -587,12 +603,14 @@ async def api_run_start(req: RunRequest):
                 add_run=_add_run,
                 task_runner_cls=use_runner,
                 org_id=req.org_id,
+                allow_simulated=allow_simulated,
             )
         except Exception as e:  # already published as run_failed; log loudly
-            print(f"[WARN] background run {run_id} errored: {e}")
+            logger.exception("background run %s errored", run_id)
 
     asyncio.create_task(_runner())
-    return {"run_id": run_id, "status": "started"}
+    status = _SIMULATED_STATUS if use_runner is None else "started"
+    return {"run_id": run_id, "status": status, "simulated": use_runner is None}
 
 
 @app.websocket("/ws/runs/{run_id}")

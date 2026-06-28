@@ -74,16 +74,18 @@ def test_evaluate_no_tests_found(monkeypatch):
 
 def test_parse_summary_only(monkeypatch):
     scorer = EvalScorer()
-    passed, total = scorer._parse_pytest_output(PYTEST_SUMMARY_ONLY)
-    assert passed == 7
-    assert total == 10  # 7 passed + 2 failed + 1 error
+    parsed = scorer._parse_pytest_output(PYTEST_SUMMARY_ONLY)
+    assert parsed.passed == 7
+    assert parsed.total == 10  # 7 passed + 2 failed + 1 error
+    assert parsed.runnable is True
 
 
 def test_parse_verbose_lines():
     scorer = EvalScorer()
-    passed, total = scorer._parse_pytest_output(PYTEST_MIXED)
-    assert passed == 3
-    assert total == 4
+    parsed = scorer._parse_pytest_output(PYTEST_MIXED)
+    assert parsed.passed == 3
+    assert parsed.total == 4
+    assert parsed.runnable is True
 
 
 def test_pass_threshold_env_override(monkeypatch):
@@ -96,6 +98,94 @@ def test_pass_threshold_env_override(monkeypatch):
 def test_pass_threshold_invalid_env_falls_back(monkeypatch):
     monkeypatch.setenv("YUNAKI_PASS_THRESHOLD", "not-a-number")
     assert es_mod._pass_threshold() == 80.0
+
+
+# ─── New parser coverage: -q summary, not-runnable, no tests ran ──────────────
+
+PYTEST_Q_PASS = "....                                                       [100%]\n4 passed in 0.10s"
+
+PYTEST_Q_MIXED = "..F.                                                       [100%]\n3 passed, 1 failed in 0.12s"
+
+PYTEST_IMPORT_ERROR = """\
+ImportError while importing test module 'test_app.py'.
+E   ModuleNotFoundError: No module named 'email_validator'
+=================== 1 error in 0.05s ===================
+"""
+
+PYTEST_COLLECTION_ERROR = """\
+==================== ERRORS ====================
+_______ ERROR collecting test_app.py _______
+E   errors during collection
+==================== 2 errors in 0.08s ====================
+"""
+
+PYTEST_NO_TESTS_RAN = "===================== no tests ran in 0.01s ====================="
+
+
+def test_parse_q_all_pass():
+    parsed = EvalScorer()._parse_pytest_output(PYTEST_Q_PASS)
+    assert parsed.passed == 4
+    assert parsed.total == 4
+    assert parsed.runnable is True
+
+
+def test_parse_q_mixed():
+    parsed = EvalScorer()._parse_pytest_output(PYTEST_Q_MIXED)
+    assert parsed.passed == 3
+    assert parsed.total == 4
+    assert parsed.runnable is True
+
+
+def test_parse_import_error_not_runnable():
+    parsed = EvalScorer()._parse_pytest_output(PYTEST_IMPORT_ERROR)
+    assert parsed.runnable is False
+    assert parsed.total == 0
+    assert "email_validator" in parsed.reason  # names the missing dep
+
+
+def test_parse_collection_error_not_runnable():
+    parsed = EvalScorer()._parse_pytest_output(PYTEST_COLLECTION_ERROR)
+    assert parsed.runnable is False
+    assert parsed.total == 0
+    assert parsed.reason  # non-empty cause surfaced
+
+
+def test_parse_no_tests_ran_not_runnable():
+    parsed = EvalScorer()._parse_pytest_output(PYTEST_NO_TESTS_RAN)
+    assert parsed.runnable is False
+    assert parsed.total == 0
+
+
+def test_evaluate_q_output_scores_correctly(monkeypatch):
+    """A passing -q run must NOT silently score 0 (the original bug)."""
+    _patch_subprocess(monkeypatch, syntax_rc=0, pytest_output=PYTEST_Q_PASS)
+    result = EvalScorer().evaluate("task", "/fake/repo")
+    assert result.score == pytest.approx(100.0)
+    assert result.passed is True
+    assert result.runnable is True
+
+
+def test_evaluate_import_error_marks_not_runnable(monkeypatch):
+    _patch_subprocess(monkeypatch, syntax_rc=0, pytest_output=PYTEST_IMPORT_ERROR)
+    result = EvalScorer().evaluate("task", "/fake/repo")
+    assert result.runnable is False
+    assert result.score == 0.0
+    assert result.details.startswith("NOT RUNNABLE")
+    assert "email_validator" in result.details
+
+
+def test_evaluate_no_tests_marks_not_runnable(monkeypatch):
+    _patch_subprocess(monkeypatch, syntax_rc=0, pytest_output="collected 0 items")
+    result = EvalScorer().evaluate("task", "/fake/repo")
+    assert result.runnable is False
+    assert result.details.startswith("NOT RUNNABLE")
+
+
+def test_evaluate_syntax_failure_not_runnable(monkeypatch):
+    monkeypatch.setattr(es_mod.subprocess, "run", lambda *a, **k: _proc(returncode=1, stderr="SyntaxError"))
+    result = EvalScorer().evaluate("task", "/fake/repo")
+    assert result.runnable is False
+    assert result.details.startswith("NOT RUNNABLE")
 
 
 def test_run_pytest_timeout(monkeypatch):

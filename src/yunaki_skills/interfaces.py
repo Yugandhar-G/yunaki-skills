@@ -230,6 +230,12 @@ class EvalResult(BaseModel):
     tasks_passed: int = 0
     tasks_total: int = 0
 
+    # True when the test command actually executed agent code (tests ran).
+    # False on import/collection errors, "no tests ran", or 0 executed — i.e.
+    # the agent code never ran, so a score of 0 is NOT evidence the code failed.
+    # Default True for back-compat with callers that predate this flag.
+    runnable: bool = True
+
     # Optional composite-reward overlay (None unless YUNAKI_COMPOSITE_REWARD on).
     composite_score: Optional[float] = None  # 0-100, exec×align + quality
     align_score: Optional[float] = None  # 0-100, judge: does code address the task
@@ -298,6 +304,38 @@ class TaskResult(BaseModel):
         if self.score_control is None:
             return None
         return round(self.score_after - self.score_control, 1)
+
+
+# ─── A/B Result ───────────────────────────────────────────────────────────
+
+
+class ABResult(BaseModel):
+    """Controlled A/B measurement of skill value on a single task.
+
+    Both arms start from the IDENTICAL baseline repo state and run the same
+    agent n_rollouts times. The only difference is whether retrieved skills are
+    injected. `skill_lift = treatment_mean - control_mean` isolates the skill
+    contribution from raw agent capability — the actual product thesis.
+
+    Means are computed over RUNNABLE rollouts only (see EvalResult.runnable), so
+    a single import error in one rollout does not zero an entire arm. The
+    *_runnable_rate fields report how many rollouts actually executed.
+    """
+
+    task_description: str
+    n_rollouts: int
+
+    control_mean: Optional[float] = None  # mean score, no-skill arm (runnable only)
+    treatment_mean: Optional[float] = None  # mean score, with-skill arm (runnable only)
+    skill_lift: Optional[float] = None  # treatment_mean - control_mean
+
+    control_scores: list[float] = []  # per-rollout scores, no-skill arm (runnable only)
+    treatment_scores: list[float] = []  # per-rollout scores, with-skill arm (runnable only)
+
+    control_runnable_rate: float = 0.0  # fraction of control rollouts that ran
+    treatment_runnable_rate: float = 0.0  # fraction of treatment rollouts that ran
+
+    skills_used: list[str] = []  # skill IDs injected into the treatment arm
 
 
 # ─── Task Runner Interface ─────────────────────────────────────────────────

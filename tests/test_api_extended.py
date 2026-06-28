@@ -239,9 +239,26 @@ def test_run_503_when_task_runner_raises(client, monkeypatch):
 # ─── /api/run/start — streaming kick-off ─────────────────────────────────────
 
 
-def test_run_start_returns_run_id(client, monkeypatch):
-    """POST /api/run/start should immediately return a run_id."""
+def test_run_start_503_when_no_runner_and_not_opted_in(client, monkeypatch):
+    """Integrity: with no real TaskRunner and YUNAKI_ALLOW_SIMULATED unset,
+    /api/run/start must FAIL LOUD with 503 — not silently start a fabricated
+    simulated run. (Old behavior returned 200 status="started" off the silent
+    stub; that fabricated path has been removed.)"""
     monkeypatch.setattr(main_mod, "_real_task_runner", False)
+    monkeypatch.delenv("YUNAKI_ALLOW_SIMULATED", raising=False)
+    resp = client.post(
+        "/api/run/start",
+        json={"task_description": "test streaming", "max_iterations": 1},
+    )
+    assert resp.status_code == 503
+    assert "No real TaskRunner" in resp.json()["detail"]
+
+
+def test_run_start_simulated_when_opted_in(client, monkeypatch):
+    """With YUNAKI_ALLOW_SIMULATED=1 and no real runner, /api/run/start returns
+    a run_id explicitly labelled SIMULATED so it can never pass as a real run."""
+    monkeypatch.setattr(main_mod, "_real_task_runner", False)
+    monkeypatch.setenv("YUNAKI_ALLOW_SIMULATED", "1")
     resp = client.post(
         "/api/run/start",
         json={"task_description": "test streaming", "max_iterations": 1},
@@ -249,7 +266,8 @@ def test_run_start_returns_run_id(client, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert "run_id" in body
-    assert body["status"] == "started"
+    assert body["status"] == "SIMULATED"
+    assert body["simulated"] is True
 
 
 # ─── Marketplace ─────────────────────────────────────────────────────────────

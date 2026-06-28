@@ -38,17 +38,31 @@ Honesty contract
 from __future__ import annotations
 
 import asyncio
-import random
+import logging
 from datetime import datetime
 from typing import Any, Callable, Optional
 
 from yunaki_skills.live_runs import RunEventBroker
+
+logger = logging.getLogger(__name__)
 
 # Pacing for replayed/simulated events. Small enough to feel live, large
 # enough to read. Named constants — no magic numbers in the loop body.
 _ITERATION_DELAY_S = 0.6
 _SKILL_EVENT_DELAY_S = 0.25
 _AGENT_CHUNK_DELAY_S = 0.04
+
+# Explicit opt-in for the simulated/demo path. Without this, an unavailable
+# real TaskRunner is a LOUD failure, never a silent slide into fake data.
+_SIMULATED_STATUS = "SIMULATED"
+
+
+class RealRunnerUnavailableError(RuntimeError):
+    """Raised when no real TaskRunner is available and simulation is not opted in.
+
+    Fail loud: the caller (FastAPI path) maps this to an explicit 503 degraded
+    response instead of fabricating a run. Never swallow this into a fake curve.
+    """
 
 
 async def _emit_skill_events(
@@ -93,10 +107,20 @@ async def execute_run(
     add_run: Callable[[dict[str, Any]], None],
     task_runner_cls: Optional[type] = None,
     org_id: Optional[str] = None,
+    allow_simulated: bool = False,
 ) -> dict[str, Any]:
     """Execute one run, emitting live events. Returns the final run record.
 
     `org_id` namespaces the skill bank for org-level isolation (None = global).
+
+    Honesty contract:
+      * When a real ``task_runner_cls`` is supplied, run it for real.
+      * When it is NOT supplied, the run only proceeds in SIMULATED mode if the
+        caller explicitly opts in via ``allow_simulated=True`` (driven by the
+        ``YUNAKI_ALLOW_SIMULATED`` env var upstream). Otherwise we raise
+        ``RealRunnerUnavailableError`` — a loud, explicit failure surfaced as a
+        ``run_failed`` event and a 503 in the HTTP path. We never silently fall
+        back to fabricated data.
     """
     await broker.publish(
         run_id,
@@ -114,7 +138,7 @@ async def execute_run(
                 task_runner_cls=task_runner_cls,
                 org_id=org_id,
             )
-        else:
+        elif allow_simulated:
             record = await _run_stub(
                 run_id,
                 task,
@@ -123,10 +147,18 @@ async def execute_run(
                 list_skills=list_skills,
                 add_run=add_run,
             )
+        else:
+            # No real runner and simulation not opted in → fail loud.
+            raise RealRunnerUnavailableError(
+                "No real TaskRunner available and YUNAKI_ALLOW_SIMULATED is not "
+                "set. Refusing to fabricate a run. Set GEMINI_API_KEY + "
+                "MONGODB_URI for live runs, or YUNAKI_ALLOW_SIMULATED=1 for an "
+                "explicitly-labelled SIMULATED demo."
+            )
         await broker.publish(run_id, {"type": "run_completed", "result": record})
         return record
     except Exception as exc:  # fail loud — surface to the UI and the log
-        print(f"[ERROR] run {run_id} failed: {exc}")
+        logger.exception("run %s failed", run_id)
         await broker.publish(run_id, {"type": "run_failed", "error": str(exc)})
         raise
     finally:
@@ -233,16 +265,29 @@ async def _run_stub(
     The dashboard receives a single event with simulated=True so it can
     render a clear "SIMULATED — NO LIVE RUN" banner.  If a judge or user
     sees this run, they know it is not evidence of self-evolution.
+
+    Reached ONLY when the caller explicitly opted in (allow_simulated=True).
+    We log a loud WARNING on every invocation so simulated runs can never hide
+    in the logs as if they were real measurements.
     """
+    logger.warning(
+        "SIMULATED RUN %s — YUNAKI_ALLOW_SIMULATED is enabled. No real agent, "
+        "no real scores. This record is labelled status=%s / simulated=True and "
+        "is NOT evidence of self-evolution.",
+        run_id,
+        _SIMULATED_STATUS,
+    )
     skills = list_skills()
     title_for = _title_lookup(skills)
     all_ids = [s.get("id") for s in skills if s.get("id")]
 
-    # We still pick skills to exercise the event pipeline, but we
-    # explicitly do NOT assign scores.
-    used = random.sample(all_ids, min(2, len(all_ids))) if all_ids else []
-    created = [all_ids[0]] if all_ids and random.random() > 0.5 else []
-    evolved = [all_ids[1]] if len(all_ids) > 1 and random.random() > 0.5 else []
+    # We surface a deterministic subset to exercise the event pipeline, but we
+    # explicitly do NOT assign scores and do NOT claim any skill was created or
+    # evolved. Nothing here is random or fabricated — a simulated run produces no
+    # measurements at all.
+    used = all_ids[:2]
+    created: list = []
+    evolved: list = []
 
     await _emit_skill_events(broker, run_id, "retrieved", used, title_for)
 
@@ -278,7 +323,7 @@ async def _run_stub(
         "iterations": max_iterations,
         "trace": "[SIMULATED — NO LIVE RUN] No real agent was executed.",
         "timestamp": datetime.utcnow().isoformat(),
-        "status": "simulated",
+        "status": _SIMULATED_STATUS,
         "simulated": True,
     }
     add_run(record)
