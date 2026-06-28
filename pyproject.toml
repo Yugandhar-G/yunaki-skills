@@ -1,7 +1,7 @@
 [project]
 name = "skill-memory"
 version = "0.1.0"
-description = "Skill-bound memory for coding agents, built on claude-mem"
+description = "Self-evolving skill memory for coding agents (PR/test-sourced, deterministic)"
 requires-python = ">=3.11"
 dependencies = []  # recall.py / binder.py are stdlib-only by design
 

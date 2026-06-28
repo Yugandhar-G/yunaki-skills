@@ -52,14 +52,15 @@ def test_humanize():
 def test_ingest_writes_each_fact(monkeypatch):
     written = []
 
-    def fake_write(skills, title, body, project=None):
-        written.append((skills, title))
+    def fake_write(skills, title, body, project=None, **kw):
+        written.append((skills, title, kw.get("source")))
         return f"/store/{title}.md"
 
     monkeypatch.setattr(ingest.facts, "write_fact", fake_write)
     paths = ingest.ingest(PYTEST_FAIL, ["python-patterns"], project="proj")
     assert len(paths) == 1
     assert written[0][0] == ["python-patterns"]
+    assert written[0][2] == "test"  # test-failure facts are tagged source=test
 
 
 def test_main_from_file(tmp_path, monkeypatch, capsys):

@@ -9,26 +9,34 @@ We measured the obvious alternative — having an LLM rewrite the skill — and 
 it (−4.2pp here; SkillsBench reports the same: curated skills +16.2pp, self-generated
 −1.3pp). So we never touch the skill body. We evolve what it knows.
 
+That context comes from a **repo-wide super memory** — a markdown fact store fed from the
+repo's own knowledge (merged PRs, review comments, commits, and failing tests). Because the
+repo keeps changing, the super memory **self-evolves**: it re-ingests as PRs land and
+curates itself so skills never recall guidance that no longer matches the code.
+
 ## Trigger points
 
-Two hooks drive the loop — they are the only moving parts:
+The hooks are the only moving parts:
 
 1. **On invocation** — every `SKILL.md` carries a `!command` that runs `recall.py` at
    skill-load time, inlining the skill's current repo context *above* the method. This is
    native Claude Code dynamic context; it fires on both explicit (`/skill`) and
    auto-invoked skills. (Confirmed empirically.)
 2. **On failure** — `ingest.py` mines failing test output for repo-specific facts
-   (deterministic, **no LLM**) and writes them to the skill's context. The next invocation
-   is smarter.
+   (deterministic, **no LLM**) and writes them to the context. The next invocation is smarter.
+3. **On merge** — a git `post-merge` hook runs `ingest_pr.py` (verbatim PR titles, review
+   comments, and commit subjects via `gh`, **no LLM**) then `consolidate.py` to curate the
+   store. This is the super memory evolving as PRs land.
+
+Everything is deterministic and markdown-native: **no LLM in ingest or recall, no JSON,
+no rewriting.** `recall.py` reads the same store regardless of which source filled it.
 
 ```
-skill invoked ──▶ recall.py inlines learned context ──▶ agent runs
-                                                            │
-                                              tests fail ◀──┘
-                                                   │
-                                   ingest.py learns the fact (no LLM)
-                                                   │
-                                   next invocation: skill is better
+   merged PR ─▶ ingest_pr.py ─┐
+ test failure ─▶ ingest.py ───┼─▶ super memory (markdown facts) ─▶ recall.py inlines ─▶ agent
+   human note ─▶ remember.py ─┘            ▲                                              │
+                                           └──── consolidate.py (dedup/supersede/prune) ◀─┘
+                                                 self-evolves on every git pull/merge
 ```
 
 ## Measured
@@ -51,9 +59,12 @@ harden the headline number.)
 |------|------|
 | `recall.py` | **invocation trigger** — skill-scoped context, inlined at load. Stdlib-only, never raises. |
 | `ingest.py` | **failure trigger** — learns repo facts from test output, deterministic, no LLM. |
+| `ingest_pr.py` | **PR source** — mines merged-PR knowledge (titles, review comments, commits) via `gh`, incremental by watermark. No LLM. |
+| `consolidate.py` | **self-evolution** — dedup, supersede newer-per-topic, prune stale facts. Deterministic. |
+| `git_hook.py` | install the `post-merge` trigger (re-ingest + consolidate on pull/merge). Marker-scoped, reversible. |
 | `remember.py` | record a fact by hand. |
 | `binder.py` | wire the invocation trigger into every `SKILL.md` (idempotent, reversible). |
-| `facts.py` | the context store (markdown, per-skill, per-project). |
+| `facts.py` | the context store (markdown, per-skill, per-project, provenance-tagged). |
 
 ## No conversion, no rewriting
 
