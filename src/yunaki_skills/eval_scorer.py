@@ -156,6 +156,12 @@ class EvalScorer(IEvalScorer):
 
     def _run_tests(self, workdir: str, command: list[str]) -> str:
         """Run the test command in the workspace; return combined stdout+stderr."""
+        # Put both the workspace root and its src/ dir on PYTHONPATH so flat-layout
+        # repos (package at root) and src-layout repos (package under src/) both
+        # import correctly, while preserving any inherited PYTHONPATH.
+        pythonpath = os.pathsep.join(
+            p for p in [workdir, os.path.join(workdir, "src"), os.environ.get("PYTHONPATH", "")] if p
+        )
         try:
             result = subprocess.run(
                 command,
@@ -163,7 +169,7 @@ class EvalScorer(IEvalScorer):
                 text=True,
                 cwd=workdir,
                 timeout=_TEST_TIMEOUT_S,
-                env={**os.environ, "PYTHONPATH": workdir},
+                env={**os.environ, "PYTHONPATH": pythonpath},
             )
             return result.stdout + "\n" + result.stderr
         except subprocess.TimeoutExpired:

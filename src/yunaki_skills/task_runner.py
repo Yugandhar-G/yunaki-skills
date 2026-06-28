@@ -208,6 +208,7 @@ class TaskRunner(ITaskRunner):
         max_iterations: int = 3,
         progress: Optional[Callable[[dict], None]] = None,
         rollouts: Optional[int] = None,
+        learn: bool = True,
     ) -> TaskResult:
         """Run a task through the full skill evolution loop.
 
@@ -216,6 +217,8 @@ class TaskRunner(ITaskRunner):
         `progress` is an optional sink invoked with structured event dicts
         (run_start, iteration_start, eval_result, skill_created, skill_evolved,
         run_complete) so callers can stream live progress over WebSocket.
+        `learn` controls whether the bank is mutated: when False the run is
+        read-only (no extract/evolve/usage), used to measure held-out transfer.
         """
         workspace = tempfile.mkdtemp(prefix="yunaki_run_")
         if code_snapshot:
@@ -235,6 +238,43 @@ class TaskRunner(ITaskRunner):
                 progress=progress,
                 snapshot_dir=snapshot_dir,
                 rollouts=rollouts_from_env(rollouts),
+                learn=learn,
+            )
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
+
+    def run_repo(
+        self,
+        task_description: str,
+        repo_path: str,
+        test_command: Optional[list[str]] = None,
+        max_iterations: int = 3,
+        progress: Optional[Callable[[dict], None]] = None,
+        rollouts: Optional[int] = None,
+        learn: bool = True,
+    ) -> TaskResult:
+        """Run the evolution loop against a materialized multi-file repo.
+
+        Unlike `run` (which seeds the workspace from a single inline snapshot),
+        this copies an existing repo directory into the ephemeral workspace and
+        drives the same loop over it. Used by the benchmark to run real
+        harvested tasks. `repo_path` is copied, never mutated in place.
+        """
+        workspace = tempfile.mkdtemp(prefix="yunaki_repo_")
+        shutil.rmtree(workspace, ignore_errors=True)
+        shutil.copytree(repo_path, workspace)
+        snapshot_dir = _snapshot_workspace(workspace)
+        try:
+            return self._run_in_workspace(
+                task_description=task_description,
+                workspace=workspace,
+                test_command=test_command,
+                max_iterations=max_iterations,
+                progress=progress,
+                snapshot_dir=snapshot_dir,
+                rollouts=rollouts_from_env(rollouts),
+                learn=learn,
             )
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
@@ -249,6 +289,7 @@ class TaskRunner(ITaskRunner):
         progress: Optional[Callable[[dict], None]],
         snapshot_dir: str,
         rollouts: int = 1,
+        learn: bool = True,
     ) -> TaskResult:
         logger.info(
             "TaskRunner starting: task=%r  org_id=%s  max_iterations=%d",
@@ -459,8 +500,10 @@ class TaskRunner(ITaskRunner):
 
             # ─── Step 6: Record usage on the injected skills ─────────────
             # Self-evolution signal — every applied skill gets a usage tick, and
-            # a success tick when this iteration passed.
-            self._record_usage(applied_skills, success=eval_result.passed)
+            # a success tick when this iteration passed. Skipped in read-only
+            # (eval) mode so held-out measurement never mutates the bank.
+            if learn:
+                self._record_usage(applied_skills, success=eval_result.passed)
 
             # ─── Step 7: If passed, we're done ───────────────────────────
             if eval_result.passed:
@@ -471,7 +514,7 @@ class TaskRunner(ITaskRunner):
                 # one-shot success otherwise teaches the bank nothing — this is
                 # what lets a solved task help the NEXT task (the cross-task
                 # transfer the loop exists to demonstrate).
-                if not skills_created and not skills_evolved:
+                if learn and not skills_created and not skills_evolved:
                     created_id = self._learn_from_success(
                         task_description,
                         trace,
@@ -493,6 +536,9 @@ class TaskRunner(ITaskRunner):
                 break
 
             # ─── Step 8: Failed — learn from it ──────────────────────────
+            # Read-only (eval) mode: never mutate the bank on the held-out set.
+            if not learn:
+                continue
             print("  [8] Learning from failure...")
 
             # If we already created a skill earlier in THIS run and still
