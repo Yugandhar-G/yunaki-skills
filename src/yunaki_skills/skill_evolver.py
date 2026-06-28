@@ -1,6 +1,7 @@
-"""Gemini-powered skill evolution — refines skills based on new execution evidence."""
+"""Skill evolution — refines skills based on new execution evidence."""
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from yunaki_skills import skill_llm
@@ -10,6 +11,8 @@ from yunaki_skills.interfaces import (
     Skill,
     SkillEvolver,
 )
+
+logger = logging.getLogger(__name__)
 
 EVOLUTION_PROMPT = """You are a skill evolution engine for a coding agent. An existing skill was applied during a task execution. Reflect on the outcome, then refine and improve the skill so it is more effective next time.
 
@@ -84,7 +87,12 @@ class SkillEvolver(SkillEvolver):
         try:
             text = (skill_llm.complete_json(prompt) or "").strip()
             if not text:
-                # Fallback: return evolved version with minimal changes
+                logger.warning(
+                    "Skill evolution got an empty response from the skill model "
+                    "(backend=%s) — using minimal fallback for %s",
+                    skill_llm.active_model_label(),
+                    skill.id,
+                )
                 return self._fallback_evolve(skill, new_eval)
 
             data = json.loads(text)
@@ -97,16 +105,16 @@ class SkillEvolver(SkillEvolver):
             except (ValueError, IndexError):
                 new_version = data.get("version", old_version)
 
-            # Adjust score based on improvement
+            # Adjust score based on the new evidence: a full pass earns a bigger
+            # bump than partial progress; a complete failure nudges the score down.
             old_score = skill.score
             new_score = float(data.get("score", old_score))
-            # If eval shows improvement, nudge score up; if worse, nudge down
-            if new_eval.score > 0:
-                if new_eval.passed or new_eval.score > 0:
-                    # Some improvement detected
-                    new_score = min(100.0, new_score + 5.0)
-                else:
-                    new_score = max(0.0, new_score - 5.0)
+            if new_eval.passed:
+                new_score = min(100.0, new_score + 5.0)
+            elif new_eval.score > 0:
+                new_score = min(100.0, new_score + 2.0)  # partial progress
+            else:
+                new_score = max(0.0, new_score - 5.0)
 
             # Build updated trigger
             trigger_data = data.get("trigger", {})
@@ -154,7 +162,7 @@ class SkillEvolver(SkillEvolver):
             return evolved_skill
 
         except (json.JSONDecodeError, ValueError, KeyError, Exception) as e:
-            print(f"[SkillEvolver] Failed to evolve skill, using fallback: {e}")
+            logger.warning("Skill evolution failed to parse skill-model output, using fallback: %s", e)
             return self._fallback_evolve(skill, new_eval)
 
     def _fallback_evolve(self, skill: Skill, new_eval: EvalResult) -> Skill:

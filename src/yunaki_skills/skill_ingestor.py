@@ -27,6 +27,7 @@ import uuid
 from collections import Counter
 from typing import Any, Optional
 
+from yunaki_skills import skill_llm
 from yunaki_skills.interfaces import (
     Granularity,
     Provenance,
@@ -61,12 +62,6 @@ _QUERY_KEYS = ("query", "trigger_query", "intent", "topic")
 
 class SkillIngestor(SkillIngestor):
     """Normalizes arbitrary skill files into canonical Skill objects."""
-
-    def __init__(self) -> None:
-        # Gemini client is built lazily and only for freeform .txt extraction,
-        # so ingestion of structured formats never requires an API key.
-        self._gemini = None
-        self._gemini_failed = False
 
     # ── format detection ─────────────────────────────────────────────────
 
@@ -245,14 +240,12 @@ class SkillIngestor(SkillIngestor):
         return self._raw_fallback(content)
 
     def _gemini_structure(self, content: str) -> Optional[dict[str, Any]]:
-        """Ask Gemini to extract {title, when_to_apply, instructions, query}.
+        """Ask the skill model to extract {title, when_to_apply, instructions, query}.
 
-        Returns None if Gemini is unavailable or the response can't be parsed,
-        so the caller falls back to a deterministic heuristic.
+        Routes through ``skill_llm.complete_json`` (host CLI by default, no Gemini
+        key required). Returns None if the model is unavailable or the response
+        can't be parsed, so the caller falls back to a deterministic heuristic.
         """
-        client = self._get_gemini()
-        if client is None:
-            return None
         prompt = (
             "Extract a reusable coding skill from the text below. Respond with ONLY "
             'a JSON object: {"title": str, "when_to_apply": str, '
@@ -260,39 +253,15 @@ class SkillIngestor(SkillIngestor):
             "2-10 concrete, actionable steps.\n\nTEXT:\n" + content[:6000]
         )
         try:
-            from google.genai import types
-
-            resp = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.2, response_mime_type="application/json"),
-            )
-            text = (resp.text or "").strip()
+            text = (skill_llm.complete_json(prompt) or "").strip()
             if not text:
+                logger.warning("Skill-model returned empty response for ingestion structuring")
                 return None
             data = json.loads(text)
             return data if isinstance(data, dict) else None
         except Exception as e:
-            logger.warning("Gemini text structuring failed: %s", e)
+            logger.warning("Skill-model text structuring failed: %s", e)
             return None
-
-    def _get_gemini(self):
-        if self._gemini is not None or self._gemini_failed:
-            return self._gemini
-        try:
-            from google import genai
-
-            from yunaki_skills.config import get
-
-            api_key = get("GEMINI_API_KEY")
-            if not api_key:
-                self._gemini_failed = True
-                return None
-            self._gemini = genai.Client(api_key=api_key)
-        except Exception as e:
-            logger.warning("Gemini client unavailable for ingestion: %s", e)
-            self._gemini_failed = True
-        return self._gemini
 
     # ── shared helpers ───────────────────────────────────────────────────
 
