@@ -121,7 +121,10 @@ def harvest(
             base_commit=f"{commit}^",
             fix_commit=commit,
             test_paths=test_paths,
-            test_command=test_command,
+            # Scope the eval to THIS task's test files, so a repo with many test
+            # files (or pre-existing unrelated failures in the base tree) doesn't
+            # pollute the pass/fail signal. The task is about its own tests.
+            test_command=[*test_command, *test_paths],
             prompt=_prompt_for(repo_path, commit),
         )
         if verify and not _fails_at_base(spec, scorer):
