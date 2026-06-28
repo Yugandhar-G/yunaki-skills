@@ -404,15 +404,14 @@ class SkillBank(SkillBank):
 
         rank = w_sim*sim + w_score*(score/100) + w_rate*success_rate
 
-        Unproven skills (0 usage) get a neutral 0.5 success prior so they are
-        not starved before they have evidence. With the default weights, skills
-        of equal score and usage rank purely by similarity (today's behavior),
-        so proven, higher-scoring skills only win ties. All weights are
-        env-tunable (YUNAKI_RANK_W_SIM / _W_SCORE / _W_RATE).
+        Off by default: w_score and w_rate are 0.0, so ranking is pure cosine
+        similarity (today's behavior). Set YUNAKI_RANK_W_SCORE / _W_RATE > 0 to
+        let proven, higher-scoring skills win ties. Unproven skills (0 usage) get
+        a neutral 0.5 success prior so they are not starved once weighting is on.
         """
         w_sim = _env_float("YUNAKI_RANK_W_SIM", 1.0)
-        w_score = _env_float("YUNAKI_RANK_W_SCORE", 0.15)
-        w_rate = _env_float("YUNAKI_RANK_W_RATE", 0.15)
+        w_score = _env_float("YUNAKI_RANK_W_SCORE", 0.0)
+        w_rate = _env_float("YUNAKI_RANK_W_RATE", 0.0)
 
         score_norm = max(0.0, min(skill.score / 100.0, 1.0))
         if skill.usage_count > 0:

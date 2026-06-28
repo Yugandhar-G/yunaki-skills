@@ -72,6 +72,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-q"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "integration: invokes a real coding-agent CLI; opt-in via YUNAKI_IT=1 (skipped in CI)",
+]
 
 [tool.coverage.run]
 source = ["yunaki_skills"]

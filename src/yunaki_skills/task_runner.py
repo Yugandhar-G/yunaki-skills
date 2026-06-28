@@ -23,6 +23,7 @@ import logging
 import os
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from yunaki_skills import governance
@@ -672,7 +673,7 @@ class TaskRunner(ITaskRunner):
         # Failure to persist must not lose the computed result — log and continue.
         try:
             run_data = result.model_dump()
-            run_data["timestamp"] = __import__("datetime").datetime.utcnow().isoformat()
+            run_data["timestamp"] = datetime.now(timezone.utc).isoformat()
             run_data["status"] = "completed"
             self._bank.save_run(run_data)
         except Exception as e:

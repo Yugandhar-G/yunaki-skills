@@ -13,12 +13,26 @@ paths share one event protocol:
 
 Event protocol (type → payload) consumed by dashboard/static/js/live.js:
   run_started    {run_id, task, max_iterations}
-  iteration      {iteration, max_iterations, score, message}
+  control_arm    {score_control, phase: "control_no_skills"}   ← NEW
+  iteration      {iteration, max_iterations, score, message,
+                  interpolated: bool}  ← interpolated=True when synthesised
   skill_event    {action: retrieved|created|evolved, skill_id, title}
   agent_output   {chunk}
   score_update   {score}
   run_completed  {result: TaskResult+status+timestamp}
   run_failed     {error}
+
+Honesty contract
+----------------
+* ``control_arm`` mirrors the ``phase: "control_no_skills"`` event that
+  TaskRunner already emits via its progress hook.  The live path must
+  surface the same information so the dashboard can show skill_delta in
+  real time, not just at completion.
+* Per-iteration ``iteration`` events produced by linear interpolation carry
+  ``"interpolated": true`` so consumers can distinguish synthesised curves
+  from real measurements.  Real per-iteration data (if available from
+  TaskResult in the future) should set ``"interpolated": false`` or omit
+  the field.
 """
 
 from __future__ import annotations
@@ -151,6 +165,22 @@ async def _run_real(
     record["timestamp"] = datetime.utcnow().isoformat()
     record["status"] = "completed"
 
+    # ── Emit control-arm event ────────────────────────────────────────────
+    # Mirrors the phase="control_no_skills" event that TaskRunner already
+    # emits via its internal progress hook.  We surface it here so the
+    # dashboard can show skill_delta as soon as the run completes rather
+    # than only deriving it at the run_completed payload.
+    score_control = record.get("score_control")
+    if score_control is not None:
+        await broker.publish(
+            run_id,
+            {
+                "type": "control_arm",
+                "phase": "control_no_skills",
+                "score_control": score_control,
+            },
+        )
+
     # Replay the trace + skill deltas as paced events for a live feel.
     await _stream_agent_output(broker, run_id, record.get("trace", ""))
     await _emit_skill_events(broker, run_id, "retrieved", record.get("skills_used", []), title_for)
@@ -160,6 +190,10 @@ async def _run_real(
     before = record.get("score_before", 0.0)
     after = record.get("score_after", 0.0)
     iters = max(record.get("iterations", max_iterations), 1)
+    # Per-iteration scores are synthesised by linear interpolation from the
+    # start/end measurements — TaskResult does not yet carry per-iteration
+    # scores.  We label every point interpolated=True so consumers never
+    # mistake the smooth curve for real, measured data points.
     for i in range(1, iters + 1):
         score = before + (after - before) * (i / iters)
         await broker.publish(
@@ -169,6 +203,7 @@ async def _run_real(
                 "iteration": i,
                 "max_iterations": iters,
                 "score": round(score, 1),
+                "interpolated": True,
                 "message": f"Iteration {i}/{iters}",
             },
         )

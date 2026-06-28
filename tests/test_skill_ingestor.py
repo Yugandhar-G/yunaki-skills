@@ -1,7 +1,10 @@
-"""Tests for SkillIngestor — format detection, parsing, and normalization.
+"""Tests for SkillIngestor — format detection, parsing, normalization, and the
+skill_llm freeform path.
 
-No Gemini API is called: the _gemini_structure path returns None when no API
-key is present, triggering the deterministic heuristic fallback.
+The skill model is stubbed to return "" by default (an autouse fixture), which
+forces the deterministic heuristic fallback so the suite never calls a real
+CLI/LLM regardless of which coding agent is installed. Tests that exercise the
+structured freeform path override the stub explicitly.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ import json
 
 import pytest
 
+import yunaki_skills.skill_ingestor as ing_mod
 from yunaki_skills.skill_ingestor import (
     SkillIngestor,
     _coerce_float,
@@ -17,6 +21,14 @@ from yunaki_skills.skill_ingestor import (
     _first_present,
     _first_str,
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_skill_llm(monkeypatch):
+    """Default: the skill model returns nothing, so the ingestor takes its
+    deterministic heuristic path. Keeps every test hermetic no matter which
+    coding-agent CLI happens to be on PATH."""
+    monkeypatch.setattr(ing_mod.skill_llm, "complete_json", lambda p: "")
 
 
 @pytest.fixture
@@ -76,11 +88,7 @@ def test_detect_format_empty_is_txt(ingestor):
 
 def test_detect_format_json_list_sniff(ingestor):
     content = '[{"title": "x"}]'
-    # Starts with '[' which is a JSON-like char, but it's a list not a dict
-    # After json.loads succeeds the code just checks first char, so it returns 'json'
-    # Actually for '[', json.loads succeeds, so it returns json
     result = ingestor.detect_format(content, "skill")
-    # Depending on implementation, could be json or txt — we just check it doesn't raise
     assert result in ("json", "txt", "yaml", "md")
 
 
@@ -228,7 +236,7 @@ def test_ingest_md_h2_header_used(ingestor):
     assert "Section Two Skill" in result.skill.title
 
 
-# ─── ingest — Text format (deterministic fallback) ───────────────────────────
+# ─── ingest — Text format (deterministic heuristic fallback) ─────────────────
 
 
 def test_ingest_txt_basic(ingestor):
@@ -236,7 +244,7 @@ def test_ingest_txt_basic(ingestor):
     result = ingestor.ingest(content, "skill.txt")
     assert result.format_detected == "txt"
     assert result.skill is not None
-    # No Gemini key -> heuristic path -> warnings about structured extraction
+    # Stubbed skill model returns "" -> heuristic path -> this warning.
     assert any("structured extraction unavailable" in w for w in result.warnings)
 
 
@@ -266,7 +274,6 @@ def test_ingest_yaml_basic(ingestor):
     content = "title: YAML Skill\nwhen_to_apply: when needed\ninstructions:\n  - step a\n  - step b"
     result = ingestor.ingest(content, "skill.yaml")
     assert result.format_detected == "yaml"
-    # If PyYAML is installed, title is parsed; otherwise falls back to heuristic
     assert result.skill is not None
     assert result.skill.title  # has some title
 
@@ -289,12 +296,10 @@ def test_ingest_yaml_without_pyyaml_falls_back(monkeypatch):
     import sys
 
     ingestor = SkillIngestor()
-    # Force the yaml import inside _from_yaml to fail
     with pytest.MonkeyPatch.context() as mp:
         mp.setitem(sys.modules, "yaml", None)
         content = "title: No YAML Lib\nsteps:\n  - do it"
         result = ingestor.ingest(content, "skill.yaml")
-    # Falls back — either txt heuristic or warns about PyYAML
     assert result.skill is not None
 
 
@@ -396,7 +401,6 @@ def test_derive_instructions_empty_fallback():
 
 def test_semantic_query_removes_stopwords(ingestor):
     query = ingestor._semantic_query("this is a simple test for the system")
-    # 'this', 'is', 'a', 'for', 'the' are stopwords
     assert "this" not in query
     assert "simple" in query or "test" in query or "system" in query
 
@@ -485,3 +489,55 @@ def test_coerce_float_invalid_returns_default():
 
 def test_coerce_float_none_returns_default():
     assert _coerce_float(None, 99.0) == 99.0
+
+
+# ─── freeform path through skill_llm (explicit stub overrides) ───────────────
+
+FREEFORM = "When the API returns 500, check the database connection pool before retrying."
+
+STRUCTURED_JSON = json.dumps(
+    {
+        "title": "Diagnose 500s via connection pool",
+        "when_to_apply": "When an endpoint intermittently returns 500",
+        "instructions": ["Inspect the pool size", "Check for leaked connections"],
+        "query": "api 500 database connection pool",
+    }
+)
+
+
+def test_freeform_text_uses_skill_llm(monkeypatch):
+    monkeypatch.setattr(ing_mod.skill_llm, "complete_json", lambda p: STRUCTURED_JSON)
+    result = SkillIngestor().ingest(FREEFORM, filename="note.txt")
+
+    assert result.skill.title == "Diagnose 500s via connection pool"
+    assert "Inspect the pool size" in result.skill.instructions
+    assert result.format_detected == "txt"
+
+
+def test_freeform_falls_back_when_model_empty(monkeypatch):
+    # Empty model output must not crash — heuristic fallback kicks in.
+    monkeypatch.setattr(ing_mod.skill_llm, "complete_json", lambda p: "")
+    result = SkillIngestor().ingest(FREEFORM, filename="note.txt")
+
+    assert result.skill is not None
+    assert any("heuristic" in w for w in result.warnings)
+
+
+def test_structured_json_does_not_call_model(monkeypatch):
+    # A well-formed JSON skill must be parsed directly, never hitting the model.
+    def boom(_):
+        raise AssertionError("skill_llm must not be called for structured JSON input")
+
+    monkeypatch.setattr(ing_mod.skill_llm, "complete_json", boom)
+    payload = json.dumps({"title": "Already structured", "when_to_apply": "x", "instructions": ["a", "b"]})
+    result = SkillIngestor().ingest(payload, filename="skill.json")
+    assert result.skill.title == "Already structured"
+    assert result.format_detected == "json"
+
+
+def test_no_gemini_key_needed(monkeypatch):
+    # Ingestor must not construct a genai client / require GEMINI_API_KEY.
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setattr(ing_mod.skill_llm, "complete_json", lambda p: STRUCTURED_JSON)
+    result = SkillIngestor().ingest(FREEFORM, filename="note.txt")
+    assert result.skill.title == "Diagnose 500s via connection pool"
