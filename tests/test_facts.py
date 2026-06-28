@@ -81,6 +81,60 @@ def test_fetch_excludes_other_skills(tmp_path):
     assert facts.fetch("unrelated-skill", project="proj", root=root) == ""
 
 
+def test_fetch_ranks_specific_over_boilerplate_bm25(tmp_path):
+    # BM25 must rank the short, specific fact above a long fact that just repeats a common
+    # word. (The old raw term-count ranker did the opposite — it rewarded repetition/length.)
+    root = str(tmp_path)
+    facts.write_fact(
+        [],
+        "general validation notes",
+        "validation validation validation validation general validation guidance",
+        project="proj",
+        root=root,
+    )
+    facts.write_fact(
+        [], "use 422 for validation errors", "return 422 on bad input", project="proj", root=root
+    )
+    out = facts.fetch("any-skill", query="422 validation", project="proj", root=root)
+    assert out.splitlines()[0] == "- use 422 for validation errors"
+
+
+def test_fetch_lens_ranks_relevant_first(tmp_path):
+    # one shared pool; the lens query RANKS the relevant fact first (it does not hard-exclude —
+    # lexical overlap is too brittle to safely drop facts; crisp exclusion is the embeddings step)
+    root = str(tmp_path)
+    facts.write_fact(
+        [],
+        "use TanStack Query for server state in React components",
+        "react server components and client data fetching",
+        project="proj",
+        root=root,
+    )
+    facts.write_fact(
+        [],
+        "validate user input to prevent SQL injection",
+        "parameterized queries at the boundary",
+        project="proj",
+        root=root,
+    )
+    out = facts.fetch("any", query="react components data fetching", project="proj", root=root)
+    assert out.splitlines()[0] == "- use TanStack Query for server state in React components"
+
+
+def test_recall_skill_lens_reads_description(tmp_path, monkeypatch):
+    import recall
+
+    d = tmp_path / "react-patterns"
+    d.mkdir()
+    (d / "SKILL.md").write_text(
+        "---\nname: react-patterns\n"
+        "description: React hooks, components, and state\n---\n# method\n"
+    )
+    monkeypatch.setattr(recall, "_SKILLS_DIR", str(tmp_path))
+    lens = recall._skill_lens("react-patterns")
+    assert "hooks" in lens and "components" in lens
+
+
 def test_fetch_includes_global_facts(tmp_path):
     root = _seed(tmp_path, "g.md", GLOBAL_FACT)
     assert "Always validate input" in facts.fetch("anything", project="proj", root=root)

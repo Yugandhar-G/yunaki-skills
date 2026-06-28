@@ -29,11 +29,19 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import glob
+import math
 import os
 import re
 import zlib
 
 DEFAULT_ROOT = os.path.expanduser(os.environ.get("YUNAKI_FACTS_DIR", "~/.claude/skill-memory"))
+# Stopwords so a rich lens (the skill's description) doesn't match every fact via common words
+# like "the/use/data" — only meaningful terms decide relevance.
+_STOP = frozenset(
+    "a an and are as at be by for from has have in into is it its of on or that the to use "
+    "used using with you your we our they this these those not no do can should when where "
+    "which while via per also more most including include used".split()
+)
 _SKILLS_RE = re.compile(r"^skills:\s*\[(.*?)\]\s*$", re.MULTILINE)
 _TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
 _SOURCE_RE = re.compile(r"^source:\s*(.+?)\s*$", re.MULTILINE)
@@ -122,6 +130,42 @@ def _relevant(skills: list[str], skill: str) -> bool:
     return (not skills) or (skill in skills)
 
 
+def _bm25_scored(matches: list[Fact], query: str) -> list[tuple[Fact, float]]:
+    """Score facts by BM25 against the query; return (fact, score) sorted most-relevant first.
+
+    Deterministic, stdlib-only. BM25 down-weights terms common across the store (IDF) and
+    normalises for length, so a short fact that hits a rare query term outranks a long
+    boilerplate fact that merely repeats a common one. Title counted twice.
+    """
+    terms = [w.lower() for w in re.findall(r"\w+", query)]
+    if not terms or not matches:
+        return [(m, 0.0) for m in matches]
+    docs = [re.findall(r"\w+", f"{f.title} {f.title} {f.body}".lower()) for f in matches]
+    n = len(docs)
+    avgdl = (sum(len(d) for d in docs) / n) or 1.0
+    df: dict[str, int] = {}
+    for d in docs:
+        for t in set(d):
+            df[t] = df.get(t, 0) + 1
+    k1, b = 1.5, 0.75
+    uniq = {t for t in terms if len(t) > 2 and t not in _STOP}
+    if not uniq:  # query was all stopwords/short tokens — nothing meaningful to rank on
+        return [(m, 0.0) for m in matches]
+    out: list[tuple[Fact, float]] = []
+    for f, d in zip(matches, docs, strict=False):
+        dl = len(d) or 1
+        total = 0.0
+        for t in uniq:
+            tf = d.count(t)
+            if not tf:
+                continue
+            idf = math.log(1 + (n - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5))
+            total += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avgdl))
+        out.append((f, total))
+    out.sort(key=lambda x: x[1], reverse=True)  # stable: equal scores keep on-disk order
+    return out
+
+
 def fetch(
     skill: str,
     query: str | None = None,
@@ -131,21 +175,22 @@ def fetch(
 ) -> str:
     """Return a markdown bullet body of facts for `skill` (or ""). Never raises.
 
-    When `query` is given, facts are ranked by keyword overlap with the query."""
+    When `query` is given, facts are ranked by BM25 relevance to the query (deterministic,
+    no LLM, no network)."""
     try:
         facts = load_facts(facts_dir(project, root))
     except OSError:
         return ""
     matches = [f for f in facts if _relevant(f.skills, skill)]
-    if query:
-        terms = [w.lower() for w in re.findall(r"\w+", query)]
-        if terms:
-
-            def score(item: Fact) -> int:
-                hay = f"{item.title} {item.body}".lower()
-                return sum(hay.count(term) for term in terms)
-
-            matches.sort(key=score, reverse=True)
+    if query and re.findall(r"\w+", query):
+        try:
+            # Rank by lens relevance (the skill's description), most relevant first, then cap by
+            # limit. We RANK, we don't hard-exclude: lexical overlap is too brittle to safely drop
+            # a fact (a python skill's description rarely contains the word "stdlib"). Crisp
+            # per-skill exclusion is the embeddings step; this keeps relevant facts and orders them.
+            matches = [f for f, _ in _bm25_scored(matches, query)]
+        except Exception:  # noqa: BLE001,S110 — ranking must never break recall; keep order
+            pass
     lines = []
     for fact in matches[:limit]:
         first = fact.body.splitlines()[0] if fact.body else ""

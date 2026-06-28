@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>skill-evolution — skills that keep learning your repo</title>
+<meta name="description" content="Coding-agent skills that get better over time without being rewritten. The method stays fixed; the memory evolves from your repo's PRs and failing tests. No LLM in the loop.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+ :root{
+   --paper:#f3f2ec; --panel:#faf9f4; --ink:#0c0d0a; --line:#0c0d0a; --soft:#6b6b63;
+   --acc:#ff3b00;
+   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+   --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+   --grid:36px;
+ }
+ *{box-sizing:border-box}
+ html{scroll-behavior:smooth}
+ body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;
+   background-image:linear-gradient(#0c0d0a0d 1px,transparent 1px),linear-gradient(90deg,#0c0d0a0d 1px,transparent 1px);
+   background-size:var(--grid) var(--grid);-webkit-font-smoothing:antialiased}
+ .wrap{max-width:1040px;margin:0 auto;padding:0 clamp(.8rem,3vw,1.5rem)}
+ .lab{font-family:var(--mono);text-transform:uppercase;letter-spacing:.16em;font-size:.66rem;color:var(--soft)}
+ a{color:inherit}
+ .mark{background:var(--acc);color:#fff;padding:0 .14em;font-weight:700}
+
+ /* sheet frame */
+ .sheet{border:1.5px solid var(--line);background:var(--paper);margin:clamp(1rem,4vw,2.5rem) auto;max-width:1040px}
+ section{border-bottom:1.5px solid var(--line)}
+ section:last-of-type{border-bottom:0}
+ .pad{padding:clamp(1.4rem,4vw,2.8rem)}
+ .secnum{font-family:var(--mono);font-size:.7rem;color:var(--acc);letter-spacing:.1em}
+ .h2{font-family:var(--mono);font-weight:600;font-size:clamp(1.3rem,1rem + 1.6vw,1.9rem);letter-spacing:-.01em;margin:.3rem 0 1rem}
+
+ /* nav / title block */
+ nav{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.7rem 1rem;
+   border-bottom:1.5px solid var(--line);font-family:var(--mono);font-size:.74rem;flex-wrap:wrap}
+ nav .id{font-weight:600;letter-spacing:.03em}
+ nav .links{display:flex;gap:.2rem;align-items:center;flex-wrap:wrap}
+ nav .links a{text-decoration:none;padding:.3rem .55rem;border:1.5px solid transparent;text-transform:uppercase;letter-spacing:.08em;font-size:.68rem}
+ nav .links a:hover{border-color:var(--line)}
+ nav .links a.cta{background:var(--ink);color:var(--paper)}
+ nav .links a.cta:hover{background:var(--acc);border-color:var(--acc)}
+ .blip{width:9px;height:9px;background:var(--acc);display:inline-block;animation:blink 1.6s steps(1) infinite}
+ @keyframes blink{50%{opacity:.25}}
+
+ /* hero */
+ .hero h1{font-family:var(--mono);font-weight:600;letter-spacing:-.025em;line-height:1.04;
+   font-size:clamp(2.2rem,1rem + 6.5vw,4.6rem);margin:.5rem 0 1.1rem}
+ .hero .lede{font-size:clamp(1.05rem,1rem + .5vw,1.3rem);max-width:60ch;color:#26261f}
+ .hero .lede b{font-weight:600}
+ .btns{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.8rem}
+ .btn{font-family:var(--mono);font-size:.8rem;text-decoration:none;padding:.7rem 1.1rem;border:1.5px solid var(--line);
+   text-transform:uppercase;letter-spacing:.08em;transition:transform .15s,background .15s,color .15s}
+ .btn.primary{background:var(--ink);color:var(--paper)}
+ .btn.primary:hover{background:var(--acc);border-color:var(--acc);transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--line)}
+ .btn.ghost:hover{background:var(--ink);color:var(--paper);transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--acc)}
+
+ /* fact ticker */
+ .ticker{border-top:1.5px solid var(--line);overflow:hidden;white-space:nowrap;background:var(--panel)}
+ .ticker .row{display:inline-flex;gap:2.5rem;padding:.6rem 0;font-family:var(--mono);font-size:.74rem;
+   animation:scroll 38s linear infinite}
+ .ticker .row span::before{content:"◆ ";color:var(--acc)}
+ @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+ /* generic 2-col */
+ .cols{display:grid;grid-template-columns:1fr 1fr;gap:0}
+ .cols>div{padding:clamp(1.4rem,4vw,2.4rem)}
+ .cols>div:first-child{border-right:1.5px solid var(--line)}
+ @media(max-width:680px){.cols{grid-template-columns:1fr}.cols>div:first-child{border-right:0;border-bottom:1.5px solid var(--line)}}
+
+ /* spec cells */
+ .specs{display:grid;grid-template-columns:repeat(3,1fr);border:1.5px solid var(--line)}
+ .specs div{padding:1rem;border-right:1.5px solid var(--line)}
+ .specs div:last-child{border-right:0}
+ .specs b{font-family:var(--mono);display:block;font-size:clamp(1.4rem,1rem + 1.6vw,2rem);font-weight:700;letter-spacing:-.02em}
+ .specs b small{color:var(--acc);font-size:.6em}
+ @media(max-width:560px){.specs{grid-template-columns:1fr}.specs div{border-right:0;border-bottom:1.5px solid var(--line)}.specs div:last-child{border-bottom:0}}
+
+ /* architecture figure — research-paper style */
+ .fig{border:1.5px solid var(--line);background:#fbfaf6;margin-top:1.2rem}
+ .fig svg{display:block;width:100%;height:auto}
+ .fig figcaption{font-family:var(--mono);font-size:.66rem;color:var(--soft);line-height:1.55;
+   padding:.6rem .8rem;border-top:1.5px solid var(--line)}
+ .fig figcaption b{color:var(--ink);font-weight:600}
+ .fig .ft{font-family:var(--mono);font-weight:600;fill:var(--ink)}
+ .fig .fs{font-family:var(--mono);fill:#6b6b63}
+ .fig .fl{font-family:var(--mono);fill:#6b6b63;letter-spacing:.06em}
+
+ /* proof */
+ .proof{text-align:center}
+ .proof .big{font-family:var(--mono);font-weight:700;letter-spacing:-.03em;line-height:1;
+   font-size:clamp(3rem,1rem + 12vw,8rem);margin:.4rem 0}
+ .proof .big i{font-style:normal;color:var(--acc)}
+ .proof p{max-width:54ch;margin:.6rem auto 0;color:#26261f}
+
+ /* code */
+ pre{font-family:var(--mono);font-size:.8rem;background:var(--ink);color:#f3f2ec;border:1.5px solid var(--line);
+   padding:1rem 1.1rem;overflow-x:auto;margin:1rem 0 0;line-height:1.7}
+ pre .c{color:#9c9c92}
+ pre .a{color:var(--acc)}
+
+ /* plain-English learn story */
+ .story{display:grid;grid-template-columns:repeat(3,1fr);border:1.5px solid var(--line);margin:1.3rem 0}
+ .story .step{padding:1.1rem 1.15rem;border-right:1.5px solid var(--line)}
+ .story .step:last-child{border-right:0}
+ @media(max-width:760px){.story{grid-template-columns:1fr}.story .step{border-right:0;border-bottom:1.5px solid var(--line)}.story .step:last-child{border-bottom:0}}
+ .story .ask{font-size:.96rem;color:#26261f;margin:.1rem 0 .2rem}
+ .story .out{font-family:var(--mono);font-size:.82rem;border:1.5px solid var(--line);padding:.5rem .6rem;margin:.7rem 0;background:#fff}
+ .story .wrong{border-color:#c43a1e;color:#a52f16}
+ .story .right{border-color:#1c8c52;color:#136b3c}
+ .story .learn{background:var(--ink);color:#eee;border-color:var(--ink)}
+ .story .why{font-size:.9rem;color:#3a3a32;margin:.4rem 0 0}
+ .story .why b{color:var(--ink)}
+
+ /* console receipts — real terminal screenshots */
+ .shot{display:block;width:100%;height:auto;border:1.5px solid var(--line);margin-top:1.1rem}
+ .cap{font-family:var(--mono);font-size:.66rem;color:var(--soft);margin:.35rem 0 0;line-height:1.5}
+ .note{font-family:var(--mono);font-size:.72rem;color:var(--soft);margin-top:1rem}
+
+ footer{padding:1rem;font-family:var(--mono);font-size:.7rem;color:var(--soft);
+   display:flex;flex-wrap:wrap;justify-content:space-between;gap:.6rem 1.4rem}
+ footer a{color:var(--ink);text-decoration:none;border-bottom:1.5px solid var(--acc)}
+ footer b{color:var(--ink)}
+ @media(prefers-reduced-motion:reduce){.blip,.ticker .row{animation:none}}
+</style></head>
+<body>
+<div class="sheet">
+
+ <nav>
+  <span class="id">SKILL-EVOLUTION / super-memory</span>
+  <span class="links">
+   <a href="#how">how it works</a><a href="#proof">proof</a><a href="#deploy">deploy</a>
+   <a href="#start">get started</a>
+   <a class="cta" href="https://github.com/Yugandhar-G/yunaki-skills" target="_blank" rel="noopener">github ↗</a>
+  </span>
+ </nav>
+
+ <!-- HERO -->
+ <section class="hero"><div class="pad">
+  <div class="lab">dwg.001 · repo-wide memory · deterministic · no-LLM &nbsp;|&nbsp; <span class="blip"></span> live</div>
+  <h1>Skills that <span class="mark">keep learning</span> your repo.</h1>
+  <p class="lede">Coding-agent skills that get better over time — <b>without ever being
+   rewritten.</b> The method stays fixed; the memory evolves, from your repo's own pull
+   requests and failing tests. No LLM in the learning loop.</p>
+  <div class="btns">
+   <a class="btn primary" href="https://161.35.239.198.sslip.io/" target="_blank" rel="noopener">see it live →</a>
+   <a class="btn ghost" href="#how">how it works</a>
+  </div>
+ </div>
+ <div class="ticker"><div class="row">
+   <span>ci: match required status checks</span><span>fix(api): clamp negative offset</span>
+   <span>use 422 for validation errors, not 400</span><span>EmailStr needs email-validator</span>
+   <span>bench: scope eval to a task's own tests</span><span>app/ package shadows app.py</span>
+   <span>guard env parsing at import time</span><span>docs: host-CLI backends + loop knobs</span>
+   <span>ci: match required status checks</span><span>fix(api): clamp negative offset</span>
+   <span>use 422 for validation errors, not 400</span><span>EmailStr needs email-validator</span>
+   <span>bench: scope eval to a task's own tests</span><span>app/ package shadows app.py</span>
+   <span>guard env parsing at import time</span><span>docs: host-CLI backends + loop knobs</span>
+ </div></div>
+ </section>
+
+ <!-- PROBLEM -->
+ <section id="problem"><div class="cols">
+  <div>
+   <div class="secnum">§01</div><div class="h2">Agents repeat your repo's mistakes.</div>
+   <p>They don't know your conventions, your gotchas, the decision in PR #42. The usual fix —
+    have an LLM rewrite the skill's prompt — <b>measurably makes it worse.</b> So we never
+    touch the skill. We evolve what it <em>knows</em>.</p>
+  </div>
+  <div>
+   <div class="specs" style="border:0">
+    <div style="border-right:1.5px solid var(--line)"><b><small>−</small>4.2<small>pp</small></b><span class="lab">LLM-rewriting a skill</span></div>
+    <div style="border-right:1.5px solid var(--line)"><b><small>+</small>16.2<small>pp</small></b><span class="lab">human-curated (SkillsBench)</span></div>
+    <div><b><small>−</small>1.3<small>pp</small></b><span class="lab">self-generated (SkillsBench)</span></div>
+   </div>
+   <p class="note">rewriting degrades. curation compounds. so evolve the context, not the method.</p>
+  </div>
+ </div></section>
+
+ <!-- HOW -->
+ <section id="how"><div class="pad">
+  <div class="secnum">§02</div><div class="h2">The skill stays fixed. The memory evolves.</div>
+  <p style="max-width:66ch">A skill is its method plus what it has learned about your repo. The whole
+   system is one loop — and the skill's text is never part of what changes:</p>
+
+  <figure class="fig">
+   <svg viewBox="0 0 1040 388" role="img" aria-label="Architecture: the skill-evolution memory loop">
+    <defs>
+     <marker id="ah" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L7,3 L0,6" fill="none" stroke="#0c0d0a" stroke-width="1.5"/></marker>
+     <marker id="ao" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L7,3 L0,6" fill="none" stroke="#ff3b00" stroke-width="1.5"/></marker>
+    </defs>
+
+    <!-- forward path -->
+    <line x1="280" y1="150" x2="398" y2="150" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <line x1="650" y1="150" x2="758" y2="150" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <text class="fl" x="339" y="140" text-anchor="middle" font-size="11">ingest</text>
+    <text class="fs" x="339" y="173" text-anchor="middle" font-size="10">no LLM</text>
+    <text class="fl" x="704" y="140" text-anchor="middle" font-size="11">recall</text>
+    <text class="fs" x="704" y="173" text-anchor="middle" font-size="10">at invocation</text>
+
+    <!-- feedback loop -->
+    <path d="M885,104 C885,46 525,46 525,104" fill="none" stroke="#ff3b00" stroke-width="1.5" marker-end="url(#ao)"/>
+    <text class="ft" x="705" y="38" text-anchor="middle" font-size="11.5" style="fill:#ff3b00">↻ every merge &amp; failing test → the skill gets sharper</text>
+
+    <!-- top tier -->
+    <rect x="30" y="104" width="250" height="92" fill="#fff" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="155" y="138" text-anchor="middle" font-size="17">Sources</text>
+    <text class="fs" x="155" y="160" text-anchor="middle" font-size="11">your codebase · merged PRs</text>
+    <text class="fs" x="155" y="177" text-anchor="middle" font-size="11">failing tests · manual notes</text>
+
+    <rect x="400" y="104" width="250" height="92" fill="#faf9f4" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="525" y="138" text-anchor="middle" font-size="17">Super memory</text>
+    <text class="fs" x="525" y="160" text-anchor="middle" font-size="11">one self-curating store</text>
+    <text class="fs" x="525" y="177" text-anchor="middle" font-size="11">dedup → supersede → prune</text>
+
+    <rect x="760" y="104" width="250" height="92" fill="#fff" stroke="#ff3b00" stroke-width="1.5"/>
+    <text class="ft" x="885" y="138" text-anchor="middle" font-size="17" style="fill:#ff3b00">The skill</text>
+    <text class="fs" x="885" y="160" text-anchor="middle" font-size="11">fixed method + repo context</text>
+    <text class="fs" x="885" y="177" text-anchor="middle" font-size="11">inlined at every invocation</text>
+
+    <!-- plane divider -->
+    <line x1="24" y1="250" x2="1016" y2="250" stroke="#0c0d0a" stroke-width="1" stroke-dasharray="3 4"/>
+    <rect x="400" y="241" width="240" height="18" fill="#fbfaf6"/>
+    <text class="fl" x="520" y="254" text-anchor="middle" font-size="10">SHARED DEPLOYMENT · TEAM / ORG</text>
+
+    <!-- same store, shared -->
+    <path d="M575,196 C620,230 650,262 664,306" fill="none" stroke="#6b6b63" stroke-width="1.2" stroke-dasharray="3 4"/>
+
+    <!-- bottom tier -->
+    <line x1="200" y1="336" x2="248" y2="336" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <line x1="520" y1="336" x2="566" y2="336" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <line x1="760" y1="336" x2="806" y2="336" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <text class="fs" x="224" y="328" text-anchor="middle" font-size="10">webhook</text>
+    <text class="fs" x="783" y="328" text-anchor="middle" font-size="10">HTTPS</text>
+
+    <rect x="24" y="306" width="176" height="60" fill="#fff" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="112" y="341" text-anchor="middle" font-size="14">Merged PR</text>
+
+    <rect x="250" y="306" width="270" height="60" fill="#fff" stroke="#ff3b00" stroke-width="1.5"/>
+    <text class="ft" x="385" y="332" text-anchor="middle" font-size="14" style="fill:#ff3b00">Rebuild</text>
+    <text class="fs" x="385" y="352" text-anchor="middle" font-size="10">scan · ingest · curate</text>
+
+    <rect x="568" y="306" width="192" height="60" fill="#faf9f4" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="664" y="341" text-anchor="middle" font-size="14">Shared memory</text>
+
+    <rect x="808" y="306" width="208" height="60" fill="#fff" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="912" y="332" text-anchor="middle" font-size="14">Every teammate</text>
+    <text class="fs" x="912" y="352" text-anchor="middle" font-size="10">recalls over HTTPS</text>
+   </svg>
+   <figcaption><b>Fig. 1 — Skill evolution.</b> The method is fixed; its memory evolves. Deterministic
+    sources become facts (no LLM); a self-curating store feeds the skill at invocation; every merge
+    or failing test loops back into the store, so the skill — and the agent using it — get sharper.
+    Deployed once, the same loop serves a whole team.</figcaption>
+  </figure>
+  <div class="cols" style="margin-top:1.4rem;border:1.5px solid var(--line)">
+   <div style="border-right:1.5px solid var(--line)"><div class="lab">on invocation</div><p style="margin:.4rem 0 0"><code>recall.py</code> runs at skill-load and inlines the skill's current repo context above the method — deterministic, skill-scoped.</p></div>
+   <div><div class="lab">on merge / failure</div><p style="margin:.4rem 0 0"><code>ingest</code> mines PRs &amp; test failures into facts; <code>consolidate</code> curates them — dedup, supersede, prune — so memory tracks the repo.</p></div>
+  </div>
+ </div></section>
+
+ <!-- PROOF: PLAIN-ENGLISH STORY + RECEIPTS -->
+ <section id="proof"><div class="pad">
+  <div class="secnum">§03 · how it works</div>
+  <div class="h2">The AI already knows your codebase's rules — before it writes a line.</div>
+  <p style="max-width:66ch">A skill is its method plus what it has learned about <em>your</em> repo. We
+   read that straight out of your code — so the moment a skill is invoked, it already carries your
+   house rules. Nothing has to break first.</p>
+
+  <img class="shot" src="demo/screenshots/alwayson.png" alt="A skill invoked with no failure already carries the repo's conventions, scanned from the code">
+  <p class="cap">We scan the codebase once and the rules it proves — stdlib-only, a fixed import
+   style, how command-line tools are written — become memory. When any skill is invoked, that memory
+   is inlined above its method automatically. <b>No test ran. Nothing failed. No AI call.</b>
+   Re-run: <code>./demo/evolve.sh</code>.</p>
+
+  <div class="h2" style="margin-top:2.4rem">And it keeps getting sharper — by itself.</div>
+  <p style="max-width:64ch">When the AI hits a rule it couldn't have guessed, the failed check teaches
+   the memory one fact. You don't need to know any jargon:</p>
+
+  <div class="story">
+   <div class="step">
+    <div class="lab">1 · ask the ai</div>
+    <p class="ask">“Turn this page title into a URL.”</p>
+    <div class="out wrong">“My Cool Title”&nbsp; → &nbsp;my-cool-title</div>
+    <p class="why"><b>Wrong here.</b> This codebase writes URLs with underscores
+     (<code>my_cool_title</code>), not dashes. The AI had no way to know that house rule — so it broke the app.</p>
+   </div>
+   <div class="step">
+    <div class="lab">2 · it learns — by itself</div>
+    <p class="ask">The failed check teaches the memory one fact.</p>
+    <div class="out learn">“in this codebase, URLs use underscores, not dashes”</div>
+    <p class="why">No human corrected it. <b>No second AI. Zero AI calls.</b> The assistant's own
+     instructions are never edited — only what it <em>knows</em> grows.</p>
+   </div>
+   <div class="step">
+    <div class="lab">3 · ask again — same ai</div>
+    <p class="ask">Same request, moments later.</p>
+    <div class="out right">“My Cool Title”&nbsp; → &nbsp;my_cool_title</div>
+    <p class="why"><b>Right now</b> — and it stays right, for you and every teammate. It learned
+     your codebase's rule once, from one failure.</p>
+   </div>
+  </div>
+
+  <img class="shot" src="demo/screenshots/failures.png" alt="One skill learns three house rules from failing tests; its file is never edited">
+  <p class="cap">One skill picking up three house rules from failed checks — <b>slug</b> (the URL form
+   of a title), <b>status</b> (which error number bad input returns — the AI guessed 400; this app
+   uses 422), <b>timestamp</b> (the date format) — and its instruction file is never edited.
+   <code>./demo/skill-evolves.sh</code>.</p>
+
+  <p style="max-width:66ch">We re-ran this with <b>real Claude agents</b>. Without the learned context
+   they got <b>1 of 3</b> right; with it, <b>3 of 3</b> — the actual receipts, every command re-runnable:</p>
+
+  <img class="shot" src="demo/screenshots/ab.png" alt="Real Claude agents: 1 of 3 without context, 3 of 3 with it">
+  <p class="cap">Same agent, same task — the only difference is whether it had the recalled rule.
+   Left column has no learned context (1/3); right is the same AI with it (3/3).
+   Re-run: <code>python3 demo/ab.py</code>.</p>
+ </div></section>
+
+ <!-- DEPLOY -->
+ <section id="deploy"><div class="pad">
+  <div class="secnum">§04 · team &amp; org</div><div class="h2">One shared brain. Every agent on the team evolves with it.</div>
+  <p style="max-width:66ch">Point every repo and teammate at one shared memory. It self-evolves from
+   your <b>merged pull requests</b> — so when one engineer's PR lands a convention, <b>every</b>
+   teammate's agents recall it on the next skill they invoke. The skills are never rewritten; the
+   org's shared memory is. Real HTTPS, per-repo tokens, one small box.</p>
+  <pre><span class="c"># every dev points their skills at the org's shared memory</span>
+export YUNAKI_SUPERMEM_URL=<span class="a">https://your-supermem.example</span>
+export YUNAKI_SUPERMEM_TOKEN=<span class="a">&lt;your repo token&gt;</span>
+<span class="c"># strictly additive + fail-open — offline falls back to local context</span></pre>
+
+  <img class="shot" src="demo/screenshots/team.png" alt="A merged PR fires the webhook; the shared memory is rebuilt from the codebase; teammates recall it">
+  <p class="cap">The loop, end to end: a teammate merges a PR, GitHub fires the webhook, and the
+   shared memory <b>rebuilds itself from the merged code</b> — here the store goes from 0 to 4
+   conventions, re-scanned on the merge. Every teammate then recalls the refreshed rules over HTTPS
+   on the next skill they invoke. No rewrites, no model calls.</p>
+
+  <img class="shot" src="demo/screenshots/live.png" alt="The org's shared memory answering live over HTTPS">
+  <p class="cap">And it's really deployed — the same shared memory answering live over HTTPS on one
+   small box, per-repo tokens, padlock and all.</p>
+
+  <div class="specs" style="margin-top:1.2rem">
+   <div><b>per-repo</b><span class="lab">scoped tokens</span></div>
+   <div><b>webhook</b><span class="lab">self-evolves on merge</span></div>
+   <div><b>every agent</b><span class="lab">recalls one shared memory</span></div>
+  </div>
+ </div></section>
+
+ <!-- START -->
+ <section id="start"><div class="pad">
+  <div class="secnum">§05 · get started</div><div class="h2">One command. No build step.</div>
+  <pre><span class="c"># wire it onto every skill (idempotent, reversible)</span>
+git clone &lt;repo&gt; &amp;&amp; cd yunaki-skills
+./install.sh
+
+<span class="c"># seed + self-evolve the super memory from your PRs</span>
+./ingest_pr.py                 <span class="c"># auto-detects the repo</span>
+./ingest_pr.py --install-git-hook   <span class="a"># re-ingest + curate on every pull/merge</span></pre>
+  <p class="note">stdlib-only. markdown in, markdown out. no JSON, no skill rewriting.</p>
+ </div></section>
+
+ <footer>
+  <span><b>skill-evolution</b> · skills that keep learning</span>
+  <span>
+   <a href="https://github.com/Yugandhar-G/yunaki-skills" target="_blank" rel="noopener">github</a> &nbsp;·&nbsp;
+   <a href="https://161.35.239.198.sslip.io/" target="_blank" rel="noopener">live demo</a> &nbsp;·&nbsp;
+   hand-coded, no templates
+  </span>
+ </footer>
+
+</div>
+</body></html>

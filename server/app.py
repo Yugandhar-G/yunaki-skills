@@ -2,13 +2,14 @@
 
 The whole point is reuse: the store is the SAME per-project markdown fact store, just on a
 persistent volume (`YUNAKI_FACTS_DIR`, e.g. /data), and the endpoints call the SAME tested
-functions the CLI uses — `ingest_pr.ingest_prs`, `consolidate.consolidate`, `facts.fetch`.
-No new storage backend, no LLM.
+functions the CLI uses — `codegraph.write_convention_facts`, `ingest_pr.ingest_prs`,
+`consolidate.consolidate`, `facts.fetch`. No new storage backend, no LLM.
 
   - GET  /health   liveness.
   - GET  /recall   bearer-token-scoped; returns a repo's markdown context for a skill.
-  - POST /webhook  GitHub `pull_request: merged` (HMAC-verified) -> ingest + consolidate
-                   that repo in the background.
+  - POST /webhook  GitHub `pull_request: merged` (HMAC-verified) -> rebuild that repo's
+                   codebase conventions from source + ingest new PR knowledge + consolidate,
+                   in the background. The shared memory is rebuilt on every merge.
   - POST /ingest   bearer-token-scoped manual seed/refresh of the token's repo.
 
 Each per-repo token only ever touches its own repo's slice (`project=<repo>`), so the store
@@ -20,10 +21,14 @@ from __future__ import annotations
 import glob
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 
+import codegraph
 import consolidate
 import facts
 import ingest_pr
@@ -53,8 +58,38 @@ def _require_repo(authorization: str | None) -> str:
     return repo
 
 
-def _ingest_repo(repo: str, root: str) -> None:
-    """Incremental ingest + curate for one repo. Never raises (mirrors the CLI contract)."""
+def _repo_source(repo: str) -> tuple[str, bool]:
+    """Path to scan for codebase conventions. Prefer a configured local checkout
+    (YUNAKI_REPO_PATH); otherwise shallow-clone the public repo. Returns (path, is_temp)."""
+    local = os.environ.get("YUNAKI_REPO_PATH", "")
+    if local and os.path.isdir(local):
+        return local, False
+    tmp = tempfile.mkdtemp(prefix="yunaki-src-")
+    subprocess.run(  # noqa: S603 — repo is _valid_repo-checked (owner/repo shape), no shell
+        ["git", "clone", "--depth", "1", "--quiet", f"https://github.com/{repo}.git", tmp],  # noqa: S607
+        check=True,
+        timeout=120,
+    )
+    return tmp, True
+
+
+def _rebuild_codebase(repo: str, root: str) -> None:
+    """Re-scan the merged source and refresh its codebase conventions. Never raises."""
+    src, is_temp = "", False
+    try:
+        src, is_temp = _repo_source(repo)
+        codegraph.write_convention_facts(src, project=repo, store_root=root)
+    except Exception:  # noqa: BLE001 — background task; a failure must not crash the worker
+        return
+    finally:
+        if is_temp and src:
+            shutil.rmtree(src, ignore_errors=True)
+
+
+def _rebuild_repo(repo: str, root: str) -> None:
+    """On merge: rebuild codebase conventions from source, ingest new PR knowledge, then
+    curate. The shared memory tracks the repo as it changes. Never raises (CLI contract)."""
+    _rebuild_codebase(repo, root)
     try:
         ingest_pr.ingest_prs(repo=repo, project=repo, root=root)
         consolidate.consolidate(project=repo, root=root)
@@ -121,7 +156,7 @@ def ingest(
     authorization: str | None = Header(default=None),
 ) -> dict:
     repo = _require_repo(authorization)
-    background.add_task(_ingest_repo, repo, _data_dir())
+    background.add_task(_rebuild_repo, repo, _data_dir())
     return {"status": "scheduled", "repo": repo}
 
 
@@ -141,5 +176,5 @@ async def webhook(request: Request, background: BackgroundTasks) -> dict:
     repo = (payload.get("repository") or {}).get("full_name")
     if not (merged and isinstance(repo, str) and _valid_repo(repo)):
         return {"status": "ignored"}  # not a merged-PR event for a valid repo
-    background.add_task(_ingest_repo, repo, _data_dir())
+    background.add_task(_rebuild_repo, repo, _data_dir())
     return {"status": "scheduled", "repo": repo}

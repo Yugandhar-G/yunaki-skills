@@ -1,0 +1,608 @@
+{
+  "meta": {
+    "model": "haiku",
+    "rollouts": 5,
+    "arms": [
+      "baseline",
+      "skill",
+      "evolved"
+    ],
+    "tasks": [
+      "mdcount",
+      "linecount",
+      "wordfreq"
+    ],
+    "n_per_arm": 15
+  },
+  "arms": {
+    "baseline": {
+      "tests": {
+        "mean": 1.0,
+        "std": 0.0,
+        "n": 15
+      },
+      "conventions": {
+        "mean": 0.4166666666666667,
+        "std": 0.11785113019775792,
+        "n": 15
+      },
+      "runnable_rate": 1.0
+    },
+    "skill": {
+      "tests": {
+        "mean": 1.0,
+        "std": 0.0,
+        "n": 15
+      },
+      "conventions": {
+        "mean": 0.4666666666666667,
+        "std": 0.08498365855987974,
+        "n": 15
+      },
+      "runnable_rate": 1.0
+    },
+    "evolved": {
+      "tests": {
+        "mean": 1.0,
+        "std": 0.0,
+        "n": 15
+      },
+      "conventions": {
+        "mean": 0.75,
+        "std": 0.0,
+        "n": 15
+      },
+      "runnable_rate": 1.0
+    }
+  },
+  "raw": [
+    {
+      "arm": "baseline",
+      "task": "mdcount",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.25,
+      "runnable": true,
+      "present": [
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "mdcount",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "mdcount",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "mdcount",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.25,
+      "runnable": true,
+      "present": [
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "mdcount",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "linecount",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.25,
+      "runnable": true,
+      "present": [
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "linecount",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "linecount",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "linecount",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.25,
+      "runnable": true,
+      "present": [
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "linecount",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "wordfreq",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.25,
+      "runnable": true,
+      "present": [
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "wordfreq",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "wordfreq",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "wordfreq",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "baseline",
+      "task": "wordfreq",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "mdcount",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "mdcount",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "mdcount",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "mdcount",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "mdcount",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "linecount",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "linecount",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "linecount",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "linecount",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "linecount",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "wordfreq",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.25,
+      "runnable": true,
+      "present": [
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "wordfreq",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.25,
+      "runnable": true,
+      "present": [
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "wordfreq",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "wordfreq",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "skill",
+      "task": "wordfreq",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.5,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "mdcount",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "mdcount",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "mdcount",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "mdcount",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "mdcount",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "linecount",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "linecount",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "linecount",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "linecount",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "linecount",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "wordfreq",
+      "rollout": 0,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "wordfreq",
+      "rollout": 1,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "wordfreq",
+      "rollout": 2,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "wordfreq",
+      "rollout": 3,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    },
+    {
+      "arm": "evolved",
+      "task": "wordfreq",
+      "rollout": 4,
+      "tests": 1.0,
+      "conventions": 0.75,
+      "runnable": true,
+      "present": [
+        "argparse-cli",
+        "future-annotations",
+        "stdlib-only"
+      ]
+    }
+  ]
+}
