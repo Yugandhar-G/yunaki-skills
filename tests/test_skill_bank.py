@@ -73,8 +73,9 @@ def test_search_semantic_ranks_relevant_first(skill_bank):
     assert results[0].id == "skill_users_endpoint"
 
 
-def test_search_semantic_breaks_ties_by_quality(skill_bank):
-    """At equal similarity, the higher-scoring skill ranks first."""
+def test_search_semantic_breaks_ties_by_quality(skill_bank, monkeypatch):
+    """At equal similarity, the higher-scoring skill ranks first (weighting on)."""
+    monkeypatch.setenv("YUNAKI_RANK_W_SCORE", "0.15")
     high = make_task_skill("skill_high", score=90.0)
     low = make_task_skill("skill_low", score=20.0)
     # Identical embedding text -> identical similarity; quality is the tiebreaker.
@@ -89,8 +90,9 @@ def test_search_semantic_breaks_ties_by_quality(skill_bank):
     assert results[0].id == "skill_high"
 
 
-def test_search_semantic_prefers_proven_skill(skill_bank):
-    """At equal similarity and score, a proven success record wins over neutral."""
+def test_search_semantic_prefers_proven_skill(skill_bank, monkeypatch):
+    """At equal similarity and score, a proven success record wins (weighting on)."""
+    monkeypatch.setenv("YUNAKI_RANK_W_RATE", "0.15")
     proven = make_task_skill("skill_proven", score=50.0)
     proven.usage_count = 10
     proven.success_count = 9  # 0.9 success rate

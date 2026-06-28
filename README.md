@@ -69,8 +69,9 @@ yunaki skills consolidate [--apply]                       # dry-run unless --app
 - **Composite reward** — `YUNAKI_COMPOSITE_REWARD=1` layers an LLM-judge
   alignment+quality signal on top of pytest. Signal only: it never flips the
   deterministic pytest pass/fail gate.
-- **Score-weighted retrieval** — proven, higher-scoring skills win ties; unproven
-  (0-usage) skills keep a neutral prior so they aren't starved.
+- **Score-weighted retrieval** — set `YUNAKI_RANK_W_SCORE` / `YUNAKI_RANK_W_RATE`
+  (both 0 by default = pure cosine) so proven, higher-scoring skills win ties;
+  unproven (0-usage) skills keep a neutral prior so they aren't starved.
 - **Merge + Drop** — `yunaki skills consolidate` fuses near-duplicate skills and
   drops ineffective ones (never 0-usage). Dry-run by default.
 
