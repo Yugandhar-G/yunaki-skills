@@ -307,17 +307,20 @@ def recall(
     Scopes to `project` (None → cwd basename = this repo; "" → all projects) but
     broadens to all projects if the scoped query finds nothing. Prefers the worker
     HTTP API; falls back to SQLite. Never raises."""
-    # No explicit query → use the skill's description as the relevance lens (falls back to the
-    # skill name). This is what makes recall skill-specific instead of one global dump.
-    effective_query = (query or f"{skill} {_skill_lens(skill)}").strip()
-    if not effective_query:
+    if not skill.strip():
         return ""
+    # No explicit query → use the skill's description as the relevance lens. If we can't read a
+    # description (e.g. an unregistered skill), fall back to NO query rather than the bare skill
+    # name — otherwise the lens floor would drop the repo's global house rules for that skill.
+    lens = _skill_lens(skill)
+    effective_query = (query or (f"{skill} {lens}" if lens else "")).strip()
     port = port if port is not None else detect_port()
     if project is None:
         project = os.path.basename(os.getcwd())
     scope = project or None
     # Primary source: the local fact store we control (deterministic, skill-scoped).
-    local = facts.fetch(skill, query=effective_query, project=scope, limit=limit)
+    # query=None when there's no lens → no floor → the skill still gets the repo's house rules.
+    local = facts.fetch(skill, query=(effective_query or None), project=scope, limit=limit)
     # Secondary source: claude-mem (opt-in; project-scoped only, so off by default).
     cm = ""
     if _claude_mem_enabled():

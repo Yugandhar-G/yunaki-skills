@@ -269,8 +269,37 @@ def test_recall_includes_local_facts_first(monkeypatch):
     assert out.index("local fact") < out.index("from cm")  # local source first
 
 
-def test_recall_empty_query_is_blank():
+def test_recall_empty_skill_is_blank():
     assert recall.recall("", project="") == ""
+
+
+def test_recall_without_description_sends_no_floor_query(monkeypatch):
+    # A skill with no readable description must NOT lens-floor — it still gets house rules.
+    seen = {}
+    monkeypatch.setattr(recall, "_skill_lens", lambda s: "")
+    monkeypatch.setattr(recall, "fetch_supermem", lambda *a, **k: "")
+
+    def fake_fetch(skill, query=None, project=None, limit=8, root=None):
+        seen["query"] = query
+        return ""
+
+    monkeypatch.setattr(recall.facts, "fetch", fake_fetch)
+    recall.recall("unregistered-skill", project="proj")
+    assert seen["query"] is None  # no lens → no query → no floor
+
+
+def test_recall_with_description_sends_lens_query(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(recall, "_skill_lens", lambda s: "React hooks and components")
+    monkeypatch.setattr(recall, "fetch_supermem", lambda *a, **k: "")
+
+    def fake_fetch(skill, query=None, project=None, limit=8, root=None):
+        seen["query"] = query
+        return ""
+
+    monkeypatch.setattr(recall.facts, "fetch", fake_fetch)
+    recall.recall("react-patterns", project="proj")
+    assert seen["query"] and "React" in seen["query"]  # lens drives the query
 
 
 def test_recall_returns_blank_when_nothing_found(monkeypatch):
