@@ -31,13 +31,33 @@ The hooks are the only moving parts:
 Everything is deterministic and markdown-native: **no LLM in ingest or recall, no JSON,
 no rewriting.** `recall.py` reads the same store regardless of which source filled it.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    SRC["Sources<br/>codebase · merged PRs<br/>failing tests · manual notes"]
+    MEM[("Super memory<br/>one self-curating store<br/>dedup → supersede → prune")]
+    SKILL["The skill<br/>fixed method + repo context<br/>inlined at every invocation"]
+    AGENT(["agent"])
+
+    SRC -- "ingest · no LLM" --> MEM
+    MEM -- "recall · at invocation" --> SKILL
+    SKILL --> AGENT
+    SKILL -. "↻ every merge & failing test → sharper" .-> MEM
+
+    subgraph TEAM ["Shared deployment · team / org"]
+      direction LR
+      PR["Merged PR"] -- webhook --> REBUILD["Rebuild<br/>scan · ingest · curate"]
+      REBUILD --> SHARED[("Shared memory")]
+      SHARED -- HTTPS --> MATES["Every teammate"]
+    end
+    MEM -. "same store" .-> SHARED
 ```
-   merged PR ─▶ ingest_pr.py ─┐
- test failure ─▶ ingest.py ───┼─▶ super memory (markdown facts) ─▶ recall.py inlines ─▶ agent
-   human note ─▶ remember.py ─┘            ▲                                              │
-                                           └──── consolidate.py (dedup/supersede/prune) ◀─┘
-                                                 self-evolves on every git pull/merge
-```
+
+**Fig. 1 — Skill evolution.** The method is fixed; its memory evolves. Deterministic
+sources become facts (no LLM); a self-curating store feeds the skill at invocation; every
+merge or failing test loops back into the store, so the skill (and the agent using it) get
+sharper. Deployed once, the same store is shared team-wide and recalled over HTTPS.
 
 ## Measured
 
