@@ -1,4 +1,5 @@
 """Offline tests for recall.py — no network, no LLM, no running worker."""
+
 import json
 import sqlite3
 

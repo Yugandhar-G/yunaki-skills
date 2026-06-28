@@ -1,4 +1,5 @@
 """Offline tests for facts.py (local fact store) and remember.py (writer)."""
+
 import facts
 import remember
 
@@ -84,8 +85,11 @@ def test_fetch_missing_dir_is_empty(tmp_path):
 def test_write_then_fetch_round_trip(tmp_path):
     root = str(tmp_path)
     path = facts.write_fact(
-        ["api-design"], "Use 422 for validation errors", "Return 422 with field errors.",
-        project="proj", root=root,
+        ["api-design"],
+        "Use 422 for validation errors",
+        "Return 422 with field errors.",
+        project="proj",
+        root=root,
     )
     assert path.endswith(".md")
     assert "Use 422 for validation errors" in facts.fetch("api-design", project="proj", root=root)

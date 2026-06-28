@@ -9,6 +9,7 @@ recall. Example:
         --title "EmailStr requires email-validator" \\
         "FastAPI EmailStr needs the email-validator package or imports 500 at startup."
 """
+
 from __future__ import annotations
 
 import argparse

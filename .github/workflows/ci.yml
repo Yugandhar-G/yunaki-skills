@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint • format • test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install tooling
+        # The package is stdlib-only (pyproject declares no dependencies); CI
+        # needs only the linter and test runner.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest ruff
+
+      - name: Lint (ruff)
+        run: ruff check *.py tests/
+
+      - name: Format check (ruff)
+        run: ruff format --check *.py tests/
+
+      - name: Test (pytest)
+        # The suite is fully offline — no network, no LLM, no live worker — so no
+        # secrets or services are required here.
+        run: pytest tests/ -q

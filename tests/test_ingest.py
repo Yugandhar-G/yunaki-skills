@@ -1,4 +1,5 @@
 """Offline tests for ingest.py — deterministic fact extraction from failure output."""
+
 import ingest
 
 PYTEST_FAIL = """\

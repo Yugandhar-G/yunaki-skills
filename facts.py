@@ -14,6 +14,7 @@ frontmatter:
 Facts are scoped per project (cwd basename) under YUNAKI_FACTS_DIR. A fact with an
 empty `skills:` list is global (returned for every skill). Never raises to the caller.
 """
+
 from __future__ import annotations
 
 import glob
@@ -90,6 +91,7 @@ def fetch(
     if query:
         terms = [w.lower() for w in re.findall(r"\w+", query)]
         if terms:
+
             def score(item: tuple[str, str]) -> int:
                 hay = f"{item[0]} {item[1]}".lower()
                 return sum(hay.count(term) for term in terms)

@@ -238,6 +238,61 @@ def _cmd_skills_consolidate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_bench_harvest(args: argparse.Namespace) -> int:
+    """Harvest coding tasks from a repo's git fix-commits into a corpus JSON."""
+    from yunaki_skills.bench.harvester import harvest
+
+    test_cmd = args.test_cmd.split()
+    corpus = harvest(
+        args.repo_path,
+        test_command=test_cmd,
+        max_tasks=args.max_tasks,
+        since=args.since,
+    )
+    corpus.save(args.out)
+
+    if args.json:
+        print(json.dumps({"tasks": len(corpus.tasks), "out": args.out}, indent=2))
+        return 0
+    print(f"Harvested {len(corpus.tasks)} verified task(s) (fail-at-base) -> {args.out}")
+    for t in corpus.tasks:
+        print(f"  {t.id}: {t.prompt[:70]}")
+    if not corpus.tasks:
+        print("  (none — try --max-tasks higher, a different repo, or check the test command)")
+    return 0
+
+
+def _cmd_bench_run(args: argparse.Namespace) -> int:
+    """Train a skill bank on a split, then report honest held-out transfer."""
+    from yunaki_skills.bench.runner import run_benchmark
+    from yunaki_skills.bench.task_spec import TaskCorpus
+
+    corpus = TaskCorpus.load(args.corpus)
+    if not corpus.tasks:
+        print("error: corpus has no tasks", file=sys.stderr)
+        return 1
+
+    report = run_benchmark(corpus, train_frac=args.train_frac, max_iterations=args.max_iterations)
+    report.save(args.out)
+
+    if args.json:
+        print(report.model_dump_json(indent=2))
+        return 0
+
+    delta = report.mean_held_out_skill_delta
+    print(f"\nBenchmark [{report.org_id}] -> {args.out}")
+    print(f"  train tasks: {report.n_train}   held-out tasks: {report.n_eval}")
+    print(f"  bank size after training: {report.bank_size_after_train}")
+    print(f"  control pass rate: {report.control_pass_rate:.0%}   skilled pass rate: {report.skilled_pass_rate:.0%}")
+    if delta is None:
+        print("  mean held-out skill_delta: n/a (no comparable held-out tasks)")
+    else:
+        verdict = "skills HELPED" if delta > 0 else ("no effect" if delta == 0 else "skills HURT")
+        print(f"  mean held-out skill_delta: {delta:+.1f}%  ({verdict})")
+    print(f"  note: {report.note}")
+    return 0
+
+
 def _cmd_doctor(args: argparse.Namespace) -> int:
     """Report which coding-agent backend would be used (no clients constructed)."""
     from yunaki_skills.agent_factory import selection_summary
@@ -305,6 +360,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_doctor = sub.add_parser("doctor", help="Show which coding-agent backend is detected")
     p_doctor.set_defaults(func=_cmd_doctor)
+
+    p_bench = sub.add_parser("bench", help="Self-evolution benchmark (harvest real tasks, prove transfer)")
+    bench_sub = p_bench.add_subparsers(dest="bench_command", required=True)
+
+    p_harvest = bench_sub.add_parser("harvest", help="Harvest tasks from a repo's git fix-commits")
+    p_harvest.add_argument("repo_path", help="Path to the git repo to harvest from")
+    p_harvest.add_argument("--out", default="corpus.json", help="Output corpus JSON path")
+    p_harvest.add_argument("--max-tasks", type=int, default=20, help="Max tasks to harvest")
+    p_harvest.add_argument("--since", default=None, help="Only scan commits after this rev (e.g. a tag)")
+    p_harvest.add_argument("--test-cmd", default="python3 -m pytest -q", help="Test command (quoted string)")
+    p_harvest.set_defaults(func=_cmd_bench_harvest)
+
+    p_bench_run = bench_sub.add_parser("run", help="Train on a split, measure held-out transfer")
+    p_bench_run.add_argument("--corpus", required=True, help="Task corpus JSON from `bench harvest`")
+    p_bench_run.add_argument("--train-frac", type=float, default=0.7, help="Fraction of tasks for training")
+    p_bench_run.add_argument("--max-iterations", type=int, default=_DEFAULT_MAX_ITERATIONS)
+    p_bench_run.add_argument("--out", default="bench_report.json", help="Output report JSON path")
+    p_bench_run.set_defaults(func=_cmd_bench_run)
 
     return parser
 

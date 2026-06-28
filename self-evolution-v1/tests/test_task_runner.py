@@ -170,6 +170,63 @@ def test_no_demo_handicap_mechanism_exists():
     assert not hasattr(tr, "_demo_handicap_clause")
 
 
+def test_learn_false_is_read_only(monkeypatch, components, eval_fail):
+    """Eval mode (learn=False) must never mutate the bank, but still measure
+    the control arm + skill_delta for held-out transfer."""
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_fail]
+    components["retriever"].retrieve_for_task.return_value = [make_task_skill("skill_x")]
+    components["retriever"].check_triggers.return_value = []
+    components["agent"].run_task.return_value = "trace"
+
+    runner = build_runner(monkeypatch, components)
+    result = runner.run("task", max_iterations=1, learn=False)
+
+    # No bank mutation of any kind.
+    components["extractor"].extract.assert_not_called()
+    components["evolver"].evolve.assert_not_called()
+    components["bank"].add.assert_not_called()
+    components["bank"].update.assert_not_called()
+    components["bank"].increment_usage.assert_not_called()
+    # But the honest measurement is still produced.
+    assert result.score_control is not None
+    assert result.skill_delta is not None
+
+
+def test_run_repo_runs_in_a_copy(monkeypatch, components, eval_fail, eval_pass, tmp_path):
+    """run_repo copies the repo into an ephemeral workspace and drives the loop
+    there — never mutating the source repo."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("x = 1\n")
+    (repo / "test_app.py").write_text("def test():\n    assert True\n")
+
+    components["scorer"].evaluate.side_effect = [eval_fail, eval_fail, eval_pass]
+    components["retriever"].retrieve_for_task.return_value = []
+    components["retriever"].check_triggers.return_value = []
+    components["extractor"].extract.return_value = None
+    components["bank"].get.return_value = None
+
+    seen: dict = {}
+
+    def agent_run(task_description, skills, repo_path):
+        seen["repo_path"] = repo_path
+        seen["files"] = sorted(os.listdir(repo_path))
+        return "trace"
+
+    components["agent"].run_task.side_effect = agent_run
+
+    runner = build_runner(monkeypatch, components)
+    result = runner.run_repo("make tests pass", str(repo), test_command=["pytest"], max_iterations=1)
+
+    # Agent ran inside a copy, not the original repo, and saw the full tree.
+    assert seen["repo_path"] != str(repo)
+    assert "app.py" in seen["files"]
+    assert "test_app.py" in seen["files"]
+    # Source repo is untouched.
+    assert sorted(os.listdir(repo)) == ["app.py", "test_app.py"]
+    assert result.score_before == eval_fail.score
+
+
 def test_injected_agent_is_used_over_default(monkeypatch, components, eval_fail, eval_pass):
     """An agent passed via the DI seam must be used instead of the built default."""
     monkeypatch.setattr(tr, "SkillBank", lambda *a, **k: components["bank"])

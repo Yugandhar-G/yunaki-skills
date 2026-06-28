@@ -11,6 +11,7 @@ Usage:
     pytest ... 2>&1 | ./ingest.py --skill api-design
     ./ingest.py --skill backend-patterns --from-file failure.txt
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,7 +53,7 @@ def extract_facts(output: str) -> list[tuple[str, str]]:
     # line ("assert f(x) == y") then the rewritten concrete line ("assert 'a' == 'b'");
     # the last match has the actual values, so prefer it.
     asserts = _ASSERT_RE.findall(output)
-    got, expected = (asserts[-1] if asserts else (None, None))
+    got, expected = asserts[-1] if asserts else (None, None)
     for test in dict.fromkeys(_FAILED_TEST_RE.findall(output)):
         human = _humanize(test)
         if got is not None and expected is not None:

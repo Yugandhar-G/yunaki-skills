@@ -10,6 +10,7 @@ duplicates), reversible (`--unbind` removes it), and it never edits skill conten
 Pairs with a SessionStart hook (`hooks/session-start-bind.sh`) that re-runs
 `bind --all` so skills installed after setup get bound automatically.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -143,9 +144,7 @@ def bind_all(
     """(Un)bind every `<skills_dir>/*/SKILL.md`. Returns {path: changed}."""
     results: dict[str, bool] = {}
     for skill_md in sorted(glob.glob(os.path.join(skills_dir, "*", "SKILL.md"))):
-        results[skill_md] = (
-            unbind_skill(skill_md) if unbind else bind_skill(skill_md, recall_path)
-        )
+        results[skill_md] = unbind_skill(skill_md) if unbind else bind_skill(skill_md, recall_path)
     return results
 
 
@@ -163,9 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.skill:
         changed = (
-            unbind_skill(args.skill)
-            if args.unbind
-            else bind_skill(args.skill, args.recall_path)
+            unbind_skill(args.skill) if args.unbind else bind_skill(args.skill, args.recall_path)
         )
         verb = "unbound" if args.unbind else "bound"
         print(f"{verb} {args.skill}: {'changed' if changed else 'no-op'}")

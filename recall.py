@@ -21,6 +21,7 @@ Design contract:
 - Recalled memory is UNTRUSTED data (claude-mem may have captured attacker-influenced
   text). We wrap it in a trust-boundary and scrub obvious secrets before printing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,9 +34,7 @@ from urllib import error, parse, request
 import facts
 
 PIDFILE = os.path.expanduser("~/.claude-mem/worker.pid")
-DEFAULT_DB = os.path.expanduser(
-    os.environ.get("CLAUDE_MEM_DB", "~/.claude-mem/claude-mem.db")
-)
+DEFAULT_DB = os.path.expanduser(os.environ.get("CLAUDE_MEM_DB", "~/.claude-mem/claude-mem.db"))
 PORT_FALLBACK = 37777
 DEFAULT_LIMIT = 8
 _MAX_LINE = 300
@@ -60,6 +59,7 @@ def _claude_mem_enabled() -> bool:
     results would leak the same observations into every skill's recall. The local
     fact store (skill-scoped) is the reliable primary source."""
     return os.environ.get("YUNAKI_USE_CLAUDE_MEM", "").strip().lower() in {"1", "true", "yes", "on"}
+
 
 # When the search envelope is structured, human text may live under these keys.
 _TEXT_FIELDS = ("title", "summary", "text", "content", "memory", "observation", "name", "fact")

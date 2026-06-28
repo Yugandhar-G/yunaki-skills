@@ -1,4 +1,5 @@
 """Offline tests for binder.py — pure text transforms + temp-file round trips."""
+
 import binder
 
 FM_SKILL = """\

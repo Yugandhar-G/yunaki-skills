@@ -14,6 +14,8 @@ check_deploy.py
 check_logs.py
 test_do.py
 .coverage
+bench_report.json
+corpus.json
 
 # local agent/worktree state
 .claude/
