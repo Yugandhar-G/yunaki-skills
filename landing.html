@@ -101,17 +101,9 @@
  pre .c{color:#9c9c92}
  pre .a{color:var(--acc)}
 
- /* console receipts */
- .term{border:1.5px solid var(--line);margin-top:1.1rem;background:var(--ink)}
- .term .bar{display:flex;align-items:center;gap:.4rem;padding:.45rem .7rem;border-bottom:1px solid #2b2b27;
-   font-family:var(--mono);font-size:.64rem;color:#9c9c92;letter-spacing:.05em}
- .term .bar .d{width:8px;height:8px;border:1px solid #5a5a52;border-radius:50%;display:inline-block}
- .term .bar span.t{margin-left:.4rem}
- .term pre{margin:0;border:0;background:transparent;color:#e8e7df;font-size:clamp(.62rem,.55rem + .4vw,.74rem);line-height:1.7;padding:.85rem 1rem}
- .term .ok{color:#36d399}
- .term .no{color:#ff6a3d}
- .term .k{color:var(--acc);font-weight:700}
- .term .c{color:#8a8a80}
+ /* console receipts — real terminal screenshots */
+ .shot{display:block;width:100%;height:auto;border:1.5px solid var(--line);margin-top:1.1rem}
+ .cap{font-family:var(--mono);font-size:.66rem;color:var(--soft);margin:.35rem 0 0}
  .note{font-family:var(--mono);font-size:.72rem;color:var(--soft);margin-top:1rem}
 
  footer{padding:1rem;font-family:var(--mono);font-size:.7rem;color:var(--soft);
@@ -201,45 +193,21 @@
     No LLM. The skill body never changed.</p>
   </div>
 
-  <div class="lab" style="margin-top:1.8rem">receipts · captured from real runs</div>
+  <div class="lab" style="margin-top:1.8rem">receipts · real terminal output, captured verbatim</div>
 
-  <div class="term">
-   <div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">real Claude agents · no-context vs recalled-context, 3 conventions</span></div>
-   <pre><span class="c">$ a/b — same agent, only the recalled context differs</span>
-task       arm       produced        expect          ok
-slug       control   my-cool-title   my_cool_title   <span class="no">✗</span>
-slug       context   my_cool_title   my_cool_title   <span class="ok">✓</span>
-status     control   400             422             <span class="no">✗</span>
-status     context   422             422             <span class="ok">✓</span>
-timestamp  control   …12:00:00Z      …12:00:00Z      <span class="ok">✓</span>
-timestamp  context   …12:00:00Z      …12:00:00Z      <span class="ok">✓</span>
-<span class="c">──────────────────────────────────────────────</span>
-control (no learned context) : <span class="k">1/3</span>
-context (recalled context)   : <span class="k">3/3</span>  <span class="c">← the 2 unguessable conventions, fixed</span></pre>
-  </div>
+  <img class="shot" src="demo/screenshots/ab.png" alt="A/B: real Claude agents, control 1/3 vs recalled-context 3/3">
+  <p class="cap">live A/B — 6 real Claude agents, same task; the only difference is the recalled
+   convention. control 1/3 → context 3/3. (the impls are committed in <code>demo/ab/</code>;
+   <code>python3 demo/ab.py</code> re-scores them.)</p>
 
-  <div class="term">
-   <div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">one skill learns three conventions · deterministic · no LLM</span></div>
-   <pre><span class="c">$ ./demo/skill-evolves.sh</span>
-recall repo-conventions  <span class="c">→ (empty)</span>
-<span class="no">✗</span> slug        'my-cool-title' != 'my_cool_title'   <span class="c">→ learned</span>
-<span class="no">✗</span> status      400 != 422                            <span class="c">→ learned</span>
-<span class="no">✗</span> timestamps  +00:00 != …Z                          <span class="c">→ learned</span>
-recall repo-conventions  →
-  - Convention: slugify uses underscores not hyphens
-  - Convention: validation errors use 422 not 400
-  - Convention: timestamps use z suffix not offset
-SKILL.md body: <span class="ok">unchanged</span>   <span class="c">· 3 facts · 0 LLM calls</span></pre>
-  </div>
+  <img class="shot" src="demo/screenshots/evolve.png" alt="One skill accumulates three conventions, body unchanged">
+  <p class="cap">one skill learns three conventions from failing tests, no LLM, body unchanged
+   — <code>./demo/skill-evolves.sh</code></p>
 
-  <div class="term">
-   <div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">shared memory · live over real HTTPS</span></div>
-   <pre><span class="c">$ curl -H 'authorization: bearer ***' https://…sslip.io/recall?skill=code-review</span>
-  - ci: name job to match required status checks, add advisory mypy
-  - feat: live landing page + reproducible 3-min demo
-  - ci: align required check name + untrack CLAUDE.md
-<span class="c"># 45 facts · per-repo token · fed by a GitHub PR webhook</span></pre>
-  </div>
+  <img class="shot" src="demo/screenshots/live.png" alt="Live recall over HTTPS from the deployed service">
+  <p class="cap">the shared memory, live over real HTTPS — recall + stats from the deployed
+   service, fed by a GitHub PR webhook (the fact count is whatever <code>/stats</code>
+   returned when the shot was taken).</p>
  </div></section>
 
  <!-- DEPLOY -->

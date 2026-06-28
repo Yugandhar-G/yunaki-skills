@@ -44,13 +44,12 @@ b "4 │ The skill has EVOLVED — it now carries all three conventions:"
 python3 "$ROOT/recall.py" --skill "$SKILL" --project demo --query "convention status timestamp slug"
 pause
 
-b "5 │ …and the skill's method never changed. Diff of the body:"
-if diff -q <(sed -n '/SKILL.md/d;p' "$ROOT/demo/skills/$SKILL/SKILL.md") \
-          <(awk '/yunaki-memory:end/{f=1;next} f' "$MD") >/dev/null 2>&1; then
-  echo "   identical — the body is untouched; everything learned lives in the fact store."
-else
-  echo "   the method below the hook is the original SKILL.md, verbatim:"
-  awk '/yunaki-memory:end/{f=1;next} f' "$MD" | sed -n '1,6p'
-fi
+b "5 │ The skill's METHOD never changed — only its memory did."
+# Compute these, don't claim them: count real fact files + verify the repo's SKILL.md
+# is byte-for-byte unchanged (the demo binds a throwaway copy, never the original).
+FACTS=$(find "$YUNAKI_FACTS_DIR/demo/facts" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+if git -C "$ROOT" diff --quiet -- "demo/skills/$SKILL/SKILL.md" 2>/dev/null; then BODY="unchanged"; else BODY="CHANGED"; fi
+printf '   SKILL.md body : %s   (verified: git diff --quiet demo/skills/%s/SKILL.md)\n' "$BODY" "$SKILL"
+printf '   facts learned : %s   (counted in the store)   ·   LLM calls : none, by design\n' "$FACTS"
 echo
 b "One skill. Three lessons. Body never rewritten — it keeps evolving, and the agents using it evolve with it."
