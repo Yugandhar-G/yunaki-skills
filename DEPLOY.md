@@ -27,9 +27,19 @@ docker compose up -d --build
 curl -s localhost:8000/health      # {"status":"ok"}
 ```
 
-Put it behind TLS (Caddy/Nginx, or a DO Load Balancer with a managed cert) so tokens and
-recalled context never travel in cleartext. Point a domain at the Droplet, e.g.
-`https://supermem.yourorg.dev`.
+### HTTPS without owning a domain (sslip.io + Caddy)
+
+`sslip.io` resolves `<anything>.<ip>` to that IP, so `<droplet-ip>.sslip.io` is a real
+hostname Let's Encrypt will issue a cert for. The `deploy/` overlay runs Caddy in front for
+automatic TLS and stops publishing the app port directly:
+
+```bash
+export SITE_ADDRESS=$(curl -s ifconfig.me).sslip.io
+docker compose -f docker-compose.yml -f deploy/docker-compose.caddy.yml up -d --build
+curl -s https://$SITE_ADDRESS/health   # {"status":"ok"} over real TLS
+```
+
+(With a domain instead, point it at the Droplet and set `SITE_ADDRESS=supermem.yourorg.dev`.)
 
 ## 3. Per-repo tokens
 
