@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>skill-evolution · super-memory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+ :root{
+   --paper:#f3f2ec; --ink:#0c0d0a; --line:#0c0d0a; --soft:#6b6b63;
+   --acc:#ff3b00;             /* single hot accent, no gradients */
+   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+   --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+   --grid:36px;
+ }
+ *{box-sizing:border-box}
+ html,body{margin:0}
+ body{
+   background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;
+   /* visible engineering grid */
+   background-image:linear-gradient(#0c0d0a0d 1px,transparent 1px),linear-gradient(90deg,#0c0d0a0d 1px,transparent 1px);
+   background-size:var(--grid) var(--grid);
+   -webkit-font-smoothing:antialiased;min-height:100vh;padding:clamp(1rem,4vw,3rem);
+ }
+ .sheet{max-width:920px;margin:0 auto;border:1.5px solid var(--line);background:var(--paper)}
+ .lab{font-family:var(--mono);text-transform:uppercase;letter-spacing:.16em;font-size:.66rem;color:var(--soft)}
+
+ /* title block (engineering-drawing header) */
+ .block{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+   padding:.7rem 1rem;border-bottom:1.5px solid var(--line);font-family:var(--mono);font-size:.74rem}
+ .block .id{font-weight:600;letter-spacing:.04em}
+ .block .status{display:inline-flex;align-items:center;gap:.5rem;text-transform:uppercase;letter-spacing:.12em}
+ .blip{width:9px;height:9px;background:var(--acc);display:inline-block;animation:blink 1.6s steps(1) infinite}
+ @keyframes blink{50%{opacity:.25}}
+
+ .pad{padding:clamp(1.4rem,4vw,2.6rem)}
+ h1{font-family:var(--mono);font-weight:600;letter-spacing:-.02em;line-height:1.06;
+   font-size:clamp(2rem,1rem + 5.5vw,3.7rem);margin:.2rem 0 1rem}
+ .mark{background:var(--acc);color:#fff;padding:0 .14em;font-weight:700}
+ .lede{font-size:clamp(1rem,.95rem + .4vw,1.18rem);max-width:62ch;color:#26261f}
+ .lede b{font-weight:600}
+
+ /* stats as a spec readout with hard cell dividers */
+ .specs{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid var(--line);margin:2rem 0}
+ .specs div{padding:1rem;border-right:1.5px solid var(--line)}
+ .specs div:last-child{border-right:0}
+ .specs b{font-family:var(--mono);display:block;font-size:clamp(1.5rem,1rem + 2vw,2.2rem);font-weight:700;letter-spacing:-.02em}
+ .specs .lab{margin-top:.25rem;display:block}
+ @media(max-width:620px){.specs{grid-template-columns:repeat(2,1fr)}.specs div:nth-child(2){border-right:0}.specs div:nth-child(1),.specs div:nth-child(2){border-bottom:1.5px solid var(--line)}}
+
+ /* pipeline drawn as a wired schematic */
+ .wire{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;border:1.5px solid var(--line);margin:1.4rem 0}
+ .node{font-family:var(--mono);font-size:.82rem;padding:.85rem 1rem;flex:1 1 140px;min-width:140px;
+   border-right:1.5px solid var(--line);display:flex;align-items:center;position:relative;background:var(--paper)}
+ .node:last-child{border-right:0}
+ .node.hot{color:var(--acc);font-weight:600}
+ .node .n{position:absolute;top:.4rem;left:.55rem;font-size:.6rem;color:var(--soft)}
+ .node::after{content:"▸";position:absolute;right:-9px;top:50%;transform:translateY(-50%);
+   color:var(--acc);font-size:.8rem;z-index:1}
+ .node:last-child::after{content:""}
+ @media(max-width:620px){.node{border-right:0;border-bottom:1.5px solid var(--line)}.node:last-child{border-bottom:0}.node::after{display:none}}
+
+ .api{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;font-family:var(--mono);font-size:.78rem;margin-top:1.6rem}
+ .api code{border:1.5px solid var(--line);padding:.35rem .55rem;background:#fff}
+ .api small{color:var(--soft);text-transform:uppercase;letter-spacing:.1em;font-size:.64rem}
+
+ footer{border-top:1.5px solid var(--line);padding:.7rem 1rem;font-family:var(--mono);
+   font-size:.68rem;color:var(--soft);display:flex;flex-wrap:wrap;gap:.4rem 1.2rem}
+ footer b{color:var(--ink);font-weight:600}
+ @media(prefers-reduced-motion:reduce){.blip{animation:none}}
+</style></head>
+<body>
+ <div class="sheet">
+  <div class="block">
+   <span class="id">SKILL-EVOLUTION / super-memory</span>
+   <span class="status"><span class="blip"></span> live</span>
+  </div>
+
+  <div class="pad">
+   <div class="lab">repo-wide memory · deterministic · no-LLM</div>
+   <h1>Skills that <span class="mark">keep learning</span> your repo.</h1>
+   <p class="lede">Every merged PR and failing test becomes a repo-specific fact, recalled
+    into skills at load time — so your skills keep evolving and the agents using them get
+    better with every change. <b>No LLM in the learning loop. The skill files are never
+    rewritten.</b></p>
+
+   <div class="specs">
+    <div><b>__FACTS__</b><span class="lab">facts learned</span></div>
+    <div><b>__REPOS__</b><span class="lab">__REPO_WORD__ tracked</span></div>
+    <div><b>0</b><span class="lab">LLM calls to learn</span></div>
+    <div><b>PR·TEST</b><span class="lab">sources</span></div>
+   </div>
+
+   <div class="lab">pipeline</div>
+   <div class="wire">
+    <span class="node"><span class="n">01</span>merged PR / failing test</span>
+    <span class="node"><span class="n">02</span>deterministic fact</span>
+    <span class="node hot"><span class="n">03</span>skill keeps evolving</span>
+    <span class="node hot"><span class="n">04</span>agents evolve with it</span>
+   </div>
+
+   <div class="api">
+    <code>GET /health</code><code>GET /recall</code><small>per-repo token</small>
+    <code>POST /webhook</code><small>github</small>
+   </div>
+  </div>
+
+  <footer>
+   <span><b>deployed</b> digitalocean</span><span><b>tls</b> automatic</span>
+   <span><b>auth</b> per-repo tokens</span><span><b>evolves</b> on pr webhook</span>
+  </footer>
+ </div>
+</body></html>

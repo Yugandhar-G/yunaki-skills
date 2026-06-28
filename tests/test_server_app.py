@@ -44,6 +44,19 @@ def test_health(client):
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_home_page_renders_html(env, client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "Skills that" in r.text  # the landing hero, not raw JSON
+
+
+def test_stats_endpoint_counts_facts(env, client):
+    facts.write_fact([], "a fact", "body", project=REPO_A, root=str(env))
+    body = client.get("/stats").json()
+    assert body["facts"] >= 1 and body["repos"] >= 1
+
+
 def test_recall_requires_token(env, client):
     assert client.get("/recall", params={"skill": "x"}).status_code == 401
 
