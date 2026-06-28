@@ -184,12 +184,11 @@ def fetch(
     matches = [f for f in facts if _relevant(f.skills, skill)]
     if query and re.findall(r"\w+", query):
         try:
-            scored = _bm25_scored(matches, query)
-            # Lens floor: a GLOBAL fact must clear the query/lens (score > 0) to be passed;
-            # a fact explicitly tagged to this skill always passes (it was scoped on purpose).
-            # This is what stops every skill from getting the same undifferentiated dump —
-            # react-patterns keeps only facts relevant to React, not the whole store.
-            matches = [f for f, s in scored if s > 0 or (skill in f.skills)]
+            # Rank by lens relevance (the skill's description), most relevant first, then cap by
+            # limit. We RANK, we don't hard-exclude: lexical overlap is too brittle to safely drop
+            # a fact (a python skill's description rarely contains the word "stdlib"). Crisp
+            # per-skill exclusion is the embeddings step; this keeps relevant facts and orders them.
+            matches = [f for f, _ in _bm25_scored(matches, query)]
         except Exception:  # noqa: BLE001,S110 — ranking must never break recall; keep order
             pass
     lines = []

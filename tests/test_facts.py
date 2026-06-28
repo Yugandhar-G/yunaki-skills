@@ -99,8 +99,9 @@ def test_fetch_ranks_specific_over_boilerplate_bm25(tmp_path):
     assert out.splitlines()[0] == "- use 422 for validation errors"
 
 
-def test_fetch_lens_floor_excludes_off_topic_globals(tmp_path):
-    # one shared GLOBAL pool; a lens query must keep only what's relevant, not the whole dump
+def test_fetch_lens_ranks_relevant_first(tmp_path):
+    # one shared pool; the lens query RANKS the relevant fact first (it does not hard-exclude —
+    # lexical overlap is too brittle to safely drop facts; crisp exclusion is the embeddings step)
     root = str(tmp_path)
     facts.write_fact(
         [],
@@ -117,22 +118,7 @@ def test_fetch_lens_floor_excludes_off_topic_globals(tmp_path):
         root=root,
     )
     out = facts.fetch("any", query="react components data fetching", project="proj", root=root)
-    assert "TanStack Query" in out
-    assert "SQL injection" not in out  # off-topic global dropped by the lens floor
-
-
-def test_fetch_lens_keeps_skill_tagged_even_if_off_topic(tmp_path):
-    # a fact explicitly scoped to the skill always passes, even with no lexical overlap
-    root = str(tmp_path)
-    facts.write_fact(
-        ["react-patterns"],
-        "this repo pins node to v20",
-        "node version is 20",
-        project="proj",
-        root=root,
-    )
-    out = facts.fetch("react-patterns", query="hooks components state", project="proj", root=root)
-    assert "node" in out
+    assert out.splitlines()[0] == "- use TanStack Query for server state in React components"
 
 
 def test_recall_skill_lens_reads_description(tmp_path, monkeypatch):
