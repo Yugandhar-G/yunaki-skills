@@ -242,3 +242,33 @@ def test_hash_embedding_empty_text(skill_bank):
     vec = skill_bank._hash_embedding("")
     norm = math.sqrt(sum(v * v for v in vec))
     assert norm == pytest.approx(0.0)
+
+
+# ─── verification-gate retrieval (opt-in, default off) ───────────────────────
+
+
+def test_require_verified_off_returns_all(skill_bank):
+    """Default behavior: unverified skills are still retrievable (back-compat)."""
+    skill_bank.add(make_task_skill("skill_unverified"))
+    results = skill_bank.search_semantic("implement get users endpoint", top_k=5)
+    assert any(s.id == "skill_unverified" for s in results)
+
+
+def test_require_verified_on_filters_unverified(skill_bank, monkeypatch):
+    monkeypatch.setenv("YUNAKI_REQUIRE_VERIFIED", "1")
+    skill_bank.add(make_task_skill("skill_verified").model_copy(update={"verified": True}))
+    skill_bank.add(make_task_skill("skill_unverified"))  # verified defaults False
+
+    results = skill_bank.search_semantic("implement get users endpoint", top_k=5)
+    ids = {s.id for s in results}
+    assert "skill_verified" in ids
+    assert "skill_unverified" not in ids
+
+
+def test_rank_w_lift_prefers_higher_measured_lift(skill_bank, monkeypatch):
+    monkeypatch.setenv("YUNAKI_RANK_W_LIFT", "0.3")
+    skill_bank.add(make_task_skill("skill_high_lift").model_copy(update={"measured_lift": 40.0}))
+    skill_bank.add(make_task_skill("skill_no_lift").model_copy(update={"measured_lift": None}))
+
+    results = skill_bank.search_semantic("implement get users endpoint", top_k=2)
+    assert results[0].id == "skill_high_lift"

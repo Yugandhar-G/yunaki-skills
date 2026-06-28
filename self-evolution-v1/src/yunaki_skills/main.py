@@ -22,8 +22,6 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from yunaki_skills.api_models import (
@@ -664,21 +662,19 @@ async def health():
     }
 
 
-# ─── Static Dashboard ─────────────────────────────────────────────────────
-
-DASHBOARD_DIR = Path(__file__).resolve().parent.parent.parent / "dashboard" / "static"
-
-if DASHBOARD_DIR.is_dir():
-    app.mount("/static", StaticFiles(directory=str(DASHBOARD_DIR)), name="static")
+# ─── Root ───────────────────────────────────────────────────────────────────
 
 
 @app.get("/")
-async def serve_dashboard():
-    """Serve the dashboard index.html at root."""
-    index_path = DASHBOARD_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
-    return {"message": "Yunaki Skills API is running. Dashboard not found at dashboard/static/index.html"}
+async def root():
+    """API info at root. Yunaki is headless: drive it from the `yunaki` CLI or
+    this JSON API. There is no bundled dashboard."""
+    return {
+        "name": "Yunaki Skills API",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+    }
 
 
 def run():

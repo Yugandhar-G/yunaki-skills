@@ -26,7 +26,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-from yunaki_skills import governance
+from yunaki_skills import governance, verification
 from yunaki_skills.agent_factory import build_agent
 from yunaki_skills.contrastive_runner import ContrastiveRunner, rollouts_from_env
 from yunaki_skills.eval_scorer import EvalScorer
@@ -176,14 +176,19 @@ class TaskRunner(ITaskRunner):
         n_rollouts: int = 3,
         max_iterations: int = 1,
         progress: Optional[Callable[[dict], None]] = None,
+        skills: Optional[list[Skill]] = None,
     ) -> ABResult:
         """Controlled A/B measurement of skill value on a single task.
 
         Both arms start from the IDENTICAL baseline workspace and run the same
         agent `n_rollouts` times. The control arm injects NO skills; the
-        treatment arm injects the retrieved task-level skills. Reporting
-        `skill_lift = treatment_mean - control_mean` isolates the skill effect
-        from raw agent capability — the product thesis.
+        treatment arm injects skills. By default the treatment arm uses the
+        task-level skills retrieved for the task; pass `skills=[...]` to inject
+        an EXACT set instead (used by `verify` to measure one specific skill so
+        the lift is unambiguously attributable to it).
+
+        Reporting `skill_lift = treatment_mean - control_mean` isolates the skill
+        effect from raw agent capability — the product thesis.
 
         Means are over RUNNABLE rollouts only (EvalResult.runnable), so one
         import error does not zero an arm. `max_iterations` is reserved for a
@@ -207,10 +212,40 @@ class TaskRunner(ITaskRunner):
                 test_command=test_command,
                 n_rollouts=n_rollouts,
                 progress=progress,
+                skills_override=skills,
             )
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
             shutil.rmtree(snapshot_dir, ignore_errors=True)
+
+    def verify(
+        self,
+        skill_id: str,
+        test_command: Optional[list[str]] = None,
+        n_rollouts: int = 3,
+        progress: Optional[Callable[[dict], None]] = None,
+    ) -> Optional[verification.GateRecommendation]:
+        """Measure a single skill's real effect and record an advisory recommendation.
+
+        Runs the control-arm A/B on the skill's originating task, injecting ONLY
+        this skill in the treatment arm so the lift is attributable to it. Records
+        the measurement on the skill (advisory) but does NOT change its status or
+        score — that requires explicit human acceptance. Returns None if the skill
+        is not found.
+        """
+        skill = self._bank.get(skill_id)
+        if skill is None:
+            logger.warning("verify: skill %s not found", skill_id)
+            return None
+        task = skill.provenance.task or skill.when_to_apply
+        ab = self.run_ab(
+            task_description=task,
+            test_command=test_command,
+            n_rollouts=n_rollouts,
+            progress=progress,
+            skills=[skill],
+        )
+        return verification.record_measurement(self._bank, skill, ab)
 
     def _run_ab_in_workspace(
         self,
@@ -220,6 +255,7 @@ class TaskRunner(ITaskRunner):
         test_command: Optional[list[str]],
         n_rollouts: int,
         progress: Optional[Callable[[dict], None]],
+        skills_override: Optional[list[Skill]] = None,
     ) -> ABResult:
         logger.info("A/B run: task=%r n_rollouts=%d", task_description, n_rollouts)
         self._emit(
@@ -240,8 +276,11 @@ class TaskRunner(ITaskRunner):
             progress=progress,
         )
 
-        # ── Retrieve skills ONCE for the treatment arm ─────────────────────
-        task_skills = self._retriever.retrieve_for_task(task_description)
+        # ── Skills for the treatment arm: explicit override or retrieved ───
+        if skills_override is not None:
+            task_skills = skills_override
+        else:
+            task_skills = self._retriever.retrieve_for_task(task_description)
         skill_ids = [s.id for s in task_skills]
         print(f"[A/B] Treatment arm: {n_rollouts} rollouts WITH skills {skill_ids}...")
         treatment_scores = self._run_arm(

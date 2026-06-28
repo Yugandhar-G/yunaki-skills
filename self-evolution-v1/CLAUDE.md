@@ -33,7 +33,7 @@ Task → Coding agent (detected host CLI; Gemini SDK fallback) → Eval Scorer (
 - `eval_scorer.py` — pytest-based evaluation
 - `llm_judge.py` — LLM-as-judge code-quality scoring
 - `task_runner.py` — orchestrates the full evolution loop (control arm + iterations)
-- `main.py` — FastAPI backend + dashboard API
+- `main.py` — FastAPI backend (headless JSON + WebSocket API; no bundled dashboard)
 
 ## Credentials
 In `.env`. `GEMINI_API_KEY` is now **optional** — only needed when no coding-agent
@@ -54,7 +54,7 @@ demo/eval fixture; the agent implements the failing endpoints.
 pip install -e .                                   # installs the `yunaki` / `yunaki-server` CLIs
 yunaki doctor                                      # show the detected coding-agent backend
 cd target_repo && python -m pytest test_app.py -v  # run the fixture's tests
-yunaki-server                                      # start the dashboard + API on :8000
+yunaki-server                                      # start the headless API on :8000 (docs at /docs)
 pytest                                             # run the suite (YUNAKI_IT=1 to include real-CLI tests)
 ```
 

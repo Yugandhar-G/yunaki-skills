@@ -127,14 +127,15 @@ print(f"{result.score_before}% → {result.score_after}%  (skill_delta={result.s
 
 Every knob is documented in [.env.example](.env.example).
 
-## Dashboard & API
+## API
 
-`yunaki-server` runs a FastAPI app that serves a live dashboard and a REST +
-WebSocket API (run a task, stream progress, manage and govern skills, multi-repo
-namespacing). Full reference in [docs/API.md](docs/API.md).
+Yunaki is headless. Drive it from the `yunaki` CLI or the REST + WebSocket API;
+there is no bundled dashboard. `yunaki-server` runs a FastAPI app (run a task,
+stream progress, manage and govern skills, multi-repo namespacing). Full
+reference in [docs/API.md](docs/API.md).
 
 ```bash
-yunaki-server   # then open http://localhost:8000
+yunaki-server   # API on http://localhost:8000  (interactive docs at /docs)
 ```
 
 ## Troubleshooting

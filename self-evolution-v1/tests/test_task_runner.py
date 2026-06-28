@@ -9,6 +9,7 @@ import pytest
 
 import yunaki_skills.task_runner as tr
 from tests.conftest import make_task_skill
+from yunaki_skills.interfaces import ABResult, SkillStatus
 
 
 @pytest.fixture
@@ -400,3 +401,49 @@ def test_default_agent_built_via_factory(monkeypatch, components):
 
     factory.assert_called_once()
     assert runner._agent is built
+
+
+# ─── verify() — the verification-gate orchestration ──────────────────────────
+
+
+def test_verify_runs_ab_on_provenance_task_and_records(monkeypatch, components):
+    skill = make_task_skill("skill_x")  # provenance.task = "Implement the GET /users endpoint"
+    components["bank"].get.return_value = skill
+    runner = build_runner(monkeypatch, components)
+
+    ab = ABResult(
+        task_description=skill.provenance.task,
+        n_rollouts=3,
+        control_mean=40.0,
+        treatment_mean=70.0,
+        skill_lift=30.0,
+        control_scores=[40.0, 40.0, 40.0],
+        treatment_scores=[70.0, 70.0, 70.0],
+        control_runnable_rate=1.0,
+        treatment_runnable_rate=1.0,
+    )
+    runner.run_ab = MagicMock(return_value=ab)
+
+    rec = runner.verify("skill_x", n_rollouts=3)
+
+    assert rec is not None and rec.recommendation == "promote"
+    # A/B measured THIS skill, on its own task
+    kwargs = runner.run_ab.call_args.kwargs
+    assert kwargs["task_description"] == "Implement the GET /users endpoint"
+    assert kwargs["skills"] == [skill]
+    # measurement persisted, but status/score NOT changed (advisory only)
+    components["bank"].update.assert_called_once()
+    recorded = components["bank"].update.call_args.args[1]
+    assert recorded.measured_lift == 30.0
+    assert recorded.gate_recommendation == "promote"
+    assert recorded.status == SkillStatus.ACTIVE  # unchanged
+    assert recorded.verified is False  # unchanged
+    components["bank"].set_status.assert_not_called()
+
+
+def test_verify_missing_skill_returns_none(monkeypatch, components):
+    components["bank"].get.return_value = None
+    runner = build_runner(monkeypatch, components)
+
+    assert runner.verify("nope") is None
+    components["bank"].update.assert_not_called()

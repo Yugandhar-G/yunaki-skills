@@ -1,7 +1,8 @@
 # Yunaki Skills — API Reference
 
 REST + WebSocket API for the self-evolving skill system. The server is a FastAPI
-app (`yunaki_skills.main:app`) that serves both the dashboard and the API.
+app (`yunaki_skills.main:app`). Yunaki is headless — there is no bundled
+dashboard; this API (and the `yunaki` CLI) is the interface.
 
 ```bash
 uvicorn yunaki_skills.main:app --port 8000 --reload

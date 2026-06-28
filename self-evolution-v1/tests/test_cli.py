@@ -113,6 +113,77 @@ def test_skills_evolve_success(monkeypatch, capsys):
     assert "v0.1 -> v0.2" in capsys.readouterr().out
 
 
+def test_skills_verify_missing_skill(monkeypatch, capsys):
+    runner = MagicMock()
+    runner.verify.return_value = None  # not found
+    monkeypatch.setattr("yunaki_skills.task_runner.TaskRunner", lambda: runner)
+
+    rc = main(["skills", "verify", "skill_unknown"])
+    assert rc == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_skills_verify_prints_recommendation_and_accept_hint(monkeypatch, capsys):
+    from yunaki_skills.verification import GateRecommendation
+
+    runner = MagicMock()
+    runner.verify.return_value = GateRecommendation(
+        recommendation="promote", reason="lift +30.0pp >= threshold", lift=30.0, suggested_score=80.0
+    )
+    monkeypatch.setattr("yunaki_skills.task_runner.TaskRunner", lambda: runner)
+
+    rc = main(["skills", "verify", "skill_x"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "promote" in out
+    assert "+30.0pp" in out
+    assert "yunaki skills accept skill_x" in out
+    runner.verify.assert_called_once()
+
+
+def test_skills_accept_applies(monkeypatch, capsys):
+    accepted = make_task_skill("skill_x").model_copy(
+        update={"verified": True, "score": 80.0}
+    )
+    bank = MagicMock()
+    bank.get.return_value = accepted
+    monkeypatch.setattr("yunaki_skills.skill_bank.SkillBank", lambda: bank)
+
+    apply_mock = MagicMock(return_value=True)
+    monkeypatch.setattr("yunaki_skills.verification.apply_acceptance", apply_mock)
+
+    rc = main(["skills", "accept", "skill_x"])
+    assert rc == 0
+    assert apply_mock.call_args.kwargs["accept"] is True
+    assert "Accepted skill_x" in capsys.readouterr().out
+
+
+def test_skills_reject_applies(monkeypatch, capsys):
+    skill = make_task_skill("skill_x")
+    bank = MagicMock()
+    bank.get.return_value = skill
+    monkeypatch.setattr("yunaki_skills.skill_bank.SkillBank", lambda: bank)
+
+    apply_mock = MagicMock(return_value=True)
+    monkeypatch.setattr("yunaki_skills.verification.apply_acceptance", apply_mock)
+
+    rc = main(["skills", "reject", "skill_x"])
+    assert rc == 0
+    assert apply_mock.call_args.kwargs["accept"] is False
+    assert "Rejected skill_x" in capsys.readouterr().out
+
+
+def test_skills_accept_without_measurement_errors(monkeypatch, capsys):
+    bank = MagicMock()
+    bank.get.return_value = make_task_skill("skill_x")  # never measured
+    monkeypatch.setattr("yunaki_skills.skill_bank.SkillBank", lambda: bank)
+    monkeypatch.setattr("yunaki_skills.verification.apply_acceptance", MagicMock(return_value=False))
+
+    rc = main(["skills", "accept", "skill_x"])
+    assert rc == 1
+    assert "no measurement" in capsys.readouterr().err
+
+
 def test_parser_requires_command():
     with pytest.raises(SystemExit):
         build_parser().parse_args([])

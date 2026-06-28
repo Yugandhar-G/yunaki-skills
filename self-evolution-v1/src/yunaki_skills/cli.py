@@ -5,6 +5,9 @@ Commands:
   yunaki run <task> [--max-iterations N]   Run a task through the evolution loop
   yunaki skills list                       List all skills in the bank
   yunaki skills evolve <skill_id>          Re-evolve a skill against fresh evidence
+  yunaki skills verify <skill_id>          Measure a skill's real lift (A/B) + recommend
+  yunaki skills accept <skill_id>          Apply a verified skill (promote, score from lift)
+  yunaki skills reject <skill_id>          Demote a skill to REJECTED
 
 Console entry point is `yunaki` (see pyproject [project.scripts]).
 """
@@ -119,6 +122,98 @@ def _cmd_skills_evolve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_skills_verify(args: argparse.Namespace) -> int:
+    """Measure a skill's real lift via the control-arm A/B and record an advisory
+    recommendation. Does NOT change the skill — apply with `skills accept/reject`."""
+    from yunaki_skills.task_runner import TaskRunner
+
+    rec = TaskRunner().verify(
+        args.skill_id,
+        test_command=args.test_command or None,
+        n_rollouts=args.rollouts,
+    )
+    if rec is None:
+        print(f"error: skill '{args.skill_id}' not found", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "skill_id": args.skill_id,
+                    "recommendation": rec.recommendation,
+                    "lift": rec.lift,
+                    "suggested_score": rec.suggested_score,
+                    "reason": rec.reason,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    lift_s = f"{rec.lift:+.1f}pp" if rec.lift is not None else "n/a"
+    print(f"Verified {args.skill_id}: {rec.recommendation}  (measured lift {lift_s})")
+    print(f"  reason: {rec.reason}")
+    if rec.recommendation == "promote":
+        print(f"  apply with:  yunaki skills accept {args.skill_id}")
+    elif rec.recommendation == "reject":
+        print(f"  demote with: yunaki skills reject {args.skill_id}")
+    print("  (advisory only — no change applied until you accept/reject)")
+    return 0
+
+
+def _apply_human_decision(skill_id: str, *, accept: bool, as_json: bool) -> int:
+    """Human-in-the-loop acceptance: the only place a skill's status/score changes."""
+    from yunaki_skills import verification
+    from yunaki_skills.skill_bank import SkillBank
+
+    bank = SkillBank()
+    skill = bank.get(skill_id)
+    if skill is None:
+        print(f"error: skill '{skill_id}' not found", file=sys.stderr)
+        return 1
+
+    ok = verification.apply_acceptance(bank, skill, accept=accept)
+    if not ok:
+        print(
+            f"error: '{skill_id}' has no measurement to accept — run "
+            f"`yunaki skills verify {skill_id}` first",
+            file=sys.stderr,
+        )
+        return 1
+
+    updated = bank.get(skill_id) or skill
+    action = "accepted" if accept else "rejected"
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "skill_id": skill_id,
+                    "action": action,
+                    "status": updated.status.value,
+                    "score": updated.score,
+                    "verified": updated.verified,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    print(f"{action.capitalize()} {skill_id}: status={updated.status.value} "
+          f"score={updated.score:.1f} verified={updated.verified}")
+    return 0
+
+
+def _cmd_skills_accept(args: argparse.Namespace) -> int:
+    """Accept a verified skill: promote it and set score from measured lift."""
+    return _apply_human_decision(args.skill_id, accept=True, as_json=args.json)
+
+
+def _cmd_skills_reject(args: argparse.Namespace) -> int:
+    """Reject a skill: demote it to REJECTED (removed from retrieval)."""
+    return _apply_human_decision(args.skill_id, accept=False, as_json=args.json)
+
+
 def _cmd_skills_consolidate(args: argparse.Namespace) -> int:
     """Merge near-duplicate skills and drop ineffective ones.
 
@@ -189,6 +284,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_evolve = skills_sub.add_parser("evolve", help="Evolve a skill by id")
     p_evolve.add_argument("skill_id", help="ID of the skill to evolve")
     p_evolve.set_defaults(func=_cmd_skills_evolve)
+
+    p_verify = skills_sub.add_parser("verify", help="Measure a skill's real lift (A/B) and recommend")
+    p_verify.add_argument("skill_id", help="ID of the skill to verify")
+    p_verify.add_argument("--rollouts", type=int, default=3, help="A/B rollouts per arm (default 3)")
+    p_verify.add_argument("--test-command", nargs="*", default=None, help="Test command to score with (default: pytest)")
+    p_verify.set_defaults(func=_cmd_skills_verify)
+
+    p_accept = skills_sub.add_parser("accept", help="Accept a verified skill (promote, score from lift)")
+    p_accept.add_argument("skill_id", help="ID of the skill to accept")
+    p_accept.set_defaults(func=_cmd_skills_accept)
+
+    p_reject = skills_sub.add_parser("reject", help="Reject a skill (demote to REJECTED)")
+    p_reject.add_argument("skill_id", help="ID of the skill to reject")
+    p_reject.set_defaults(func=_cmd_skills_reject)
 
     p_consolidate = skills_sub.add_parser("consolidate", help="Merge near-duplicate skills and drop ineffective ones")
     p_consolidate.add_argument("--apply", action="store_true", help="Actually mutate the bank (default: dry-run)")

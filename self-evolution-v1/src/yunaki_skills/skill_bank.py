@@ -132,20 +132,26 @@ class SkillBank(SkillBank):
         """
         return {"org_id": self._org_id}
 
-    def _retrieval_filter(self) -> dict:
+    def _retrieval_filter(self, require_verified: bool = False) -> dict:
         """Namespace filter + governance gate for injectable skills.
 
         Only APPROVED/ACTIVE skills are retrievable. A missing status (legacy
         docs) is treated as retrievable for backward compatibility.
+
+        When `require_verified` is True, also require `verified == True` so only
+        skills a human has accepted (after measurement) are injected. Off by
+        default; callers opt in (task-level retrieval reads the env policy).
         """
-        statuses = governance.retrievable_statuses()
-        return {
+        f: dict = {
             **self._namespace_filter(),
             "$or": [
-                {"status": {"$in": statuses}},
+                {"status": {"$in": governance.retrievable_statuses()}},
                 {"status": {"$exists": False}},
             ],
         }
+        if require_verified:
+            f["verified"] = True
+        return f
 
     def _compute_embedding(self, text: str) -> list[float]:
         cached = self._embed_cache.get(text)
@@ -382,8 +388,9 @@ class SkillBank(SkillBank):
         """
         query_vec = self._compute_embedding(query)
 
-        # Only retrievable (approved/active) skills in this namespace.
-        docs = list(self._skills.find(self._retrieval_filter()))
+        # Only retrievable (approved/active) skills in this namespace; optionally
+        # restricted to human-verified skills when YUNAKI_REQUIRE_VERIFIED is set.
+        docs = list(self._skills.find(self._retrieval_filter(governance.require_verified_enabled())))
         if not docs:
             return []
 
@@ -402,23 +409,27 @@ class SkillBank(SkillBank):
     def _rank_value(sim: float, skill: Skill) -> float:
         """Combine similarity with skill quality for retrieval ranking.
 
-        rank = w_sim*sim + w_score*(score/100) + w_rate*success_rate
+        rank = w_sim*sim + w_score*(score/100) + w_rate*success_rate + w_lift*(lift/100)
 
-        Off by default: w_score and w_rate are 0.0, so ranking is pure cosine
-        similarity (today's behavior). Set YUNAKI_RANK_W_SCORE / _W_RATE > 0 to
-        let proven, higher-scoring skills win ties. Unproven skills (0 usage) get
-        a neutral 0.5 success prior so they are not starved once weighting is on.
+        Off by default: w_score, w_rate and w_lift are 0.0, so ranking is pure
+        cosine similarity (today's behavior). Set YUNAKI_RANK_W_SCORE / _W_RATE /
+        _W_LIFT > 0 to let proven skills win ties. Unproven skills (0 usage) get a
+        neutral 0.5 success prior; never-measured skills contribute 0 lift.
         """
         w_sim = _env_float("YUNAKI_RANK_W_SIM", 1.0)
         w_score = _env_float("YUNAKI_RANK_W_SCORE", 0.0)
         w_rate = _env_float("YUNAKI_RANK_W_RATE", 0.0)
+        w_lift = _env_float("YUNAKI_RANK_W_LIFT", 0.0)
 
         score_norm = max(0.0, min(skill.score / 100.0, 1.0))
         if skill.usage_count > 0:
             success_rate = skill.success_count / skill.usage_count
         else:
             success_rate = 0.5  # neutral prior for unproven skills
-        return w_sim * sim + w_score * score_norm + w_rate * success_rate
+        lift_norm = 0.0
+        if skill.measured_lift is not None:
+            lift_norm = max(0.0, min(skill.measured_lift / 100.0, 1.0))
+        return w_sim * sim + w_score * score_norm + w_rate * success_rate + w_lift * lift_norm
 
     def search_pattern(self, text: str) -> list[Skill]:
         """Pattern match for event-driven skills. Regex on text."""

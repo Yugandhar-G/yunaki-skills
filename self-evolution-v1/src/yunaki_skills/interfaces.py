@@ -93,6 +93,15 @@ class Skill(BaseModel):
     usage_count: int = 0  # how many times the skill was applied
     success_count: int = 0  # how many applications led to a passing result
 
+    # ── Verification-gate fields ──────────────────────────────────────────
+    # Populated by `yunaki skills verify`; advisory until a human accepts.
+    measured_lift: Optional[float] = None  # last A/B skill_lift (pp); None = never measured
+    measured_lift_low: Optional[float] = None  # lower bound of the lift confidence interval
+    measured_lift_high: Optional[float] = None  # upper bound of the lift confidence interval
+    measured_at: str = ""  # ISO8601 of last measurement; "" = never
+    gate_recommendation: str = ""  # promote|reject|inconclusive|no_measurement|""
+    verified: bool = False  # True only after explicit human acceptance
+
 
 class SkillIngestResult(BaseModel):
     """Outcome of ingesting an arbitrary-format skill into the canonical schema."""

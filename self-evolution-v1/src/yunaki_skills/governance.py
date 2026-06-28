@@ -31,6 +31,16 @@ def auto_approve_enabled() -> bool:
     return _truthy(raw)
 
 
+def require_verified_enabled() -> bool:
+    """Whether task-level retrieval is restricted to human-verified skills.
+
+    Default False → today's behavior (verified and unverified both retrievable).
+    Set YUNAKI_REQUIRE_VERIFIED to require that a human has accepted a skill's
+    measured lift before it can be injected.
+    """
+    return _truthy(cfg("YUNAKI_REQUIRE_VERIFIED", "false"))
+
+
 def retrievable_statuses() -> list[str]:
     """String values of statuses eligible for retrieval (for DB filters)."""
     return [s.value for s in RETRIEVABLE_STATUSES]
