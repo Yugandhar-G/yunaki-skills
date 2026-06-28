@@ -77,45 +77,15 @@
  .specs b small{color:var(--acc);font-size:.6em}
  @media(max-width:560px){.specs{grid-template-columns:1fr}.specs div{border-right:0;border-bottom:1.5px solid var(--line)}.specs div:last-child{border-bottom:0}}
 
- /* wired schematic */
- .wire{display:flex;flex-wrap:wrap;border:1.5px solid var(--line);margin-top:1rem}
- .node{font-family:var(--mono);font-size:.82rem;padding:1rem;flex:1 1 150px;min-width:150px;
-   border-right:1.5px solid var(--line);position:relative}
- .node:last-child{border-right:0}
- .node .n{display:block;font-size:.6rem;color:var(--soft);margin-bottom:.4rem}
- .node.hot{color:var(--acc);font-weight:600}
- .node::after{content:"▸";position:absolute;right:-8px;top:50%;transform:translateY(-50%);color:var(--acc);z-index:1}
- .node:last-child::after{content:""}
- @media(max-width:680px){.node{border-right:0;border-bottom:1.5px solid var(--line)}.node:last-child{border-bottom:0}.node::after{display:none}}
-
- /* architecture diagram */
- .arch{border:1.5px solid var(--line);margin-top:1.2rem;background:var(--paper)}
- .arch-flow{display:grid;grid-template-columns:1fr auto 1.15fr auto 1fr;align-items:stretch}
- .arch-col{display:flex;flex-direction:column}
- .arch-col.mem{background:var(--panel)}
- .arch-h{font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;font-size:.58rem;color:var(--soft);
-   padding:.5rem .7rem;border-bottom:1.5px solid var(--line)}
- .arch-box{font-family:var(--mono);padding:.65rem .75rem;border-bottom:1.5px solid var(--line)}
- .arch-box:last-child{border-bottom:0}
- .arch-box b{display:block;font-size:.82rem;font-weight:600;letter-spacing:-.01em}
- .arch-box span{display:block;font-size:.62rem;color:var(--soft);margin-top:.12rem}
- .arch-box.big{flex:1;display:flex;flex-direction:column;justify-content:center}
- .arch-box.hot b{color:var(--acc)}
- .arch-box.hot span{color:var(--acc);opacity:.85}
- .arch-arrow{display:flex;align-items:center;justify-content:center;color:var(--acc);font-size:1rem;
-   padding:0 .3rem;border-left:1.5px solid var(--line);border-right:1.5px solid var(--line)}
- .arch-team{border-top:1.5px solid var(--line);background:var(--ink);color:var(--paper);
-   display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;padding:.7rem .8rem;font-family:var(--mono);font-size:.7rem}
- .arch-team .tlab{color:#9c9c92;text-transform:uppercase;letter-spacing:.12em;font-size:.58rem;padding-right:.3rem}
- .tnode{border:1.5px solid #3a3a32;padding:.28rem .5rem}
- .tnode.hot{border-color:var(--acc);color:#fff}
- .tsep{color:var(--acc)}
- @media(max-width:760px){
-   .arch-flow{grid-template-columns:1fr}
-   .arch-arrow{display:none}
-   .arch-col{border-bottom:1.5px solid var(--line)}
-   .arch-col:last-child{border-bottom:0}
- }
+ /* architecture figure — research-paper style */
+ .fig{border:1.5px solid var(--line);background:#fbfaf6;margin-top:1.2rem}
+ .fig svg{display:block;width:100%;height:auto}
+ .fig figcaption{font-family:var(--mono);font-size:.66rem;color:var(--soft);line-height:1.55;
+   padding:.6rem .8rem;border-top:1.5px solid var(--line)}
+ .fig figcaption b{color:var(--ink);font-weight:600}
+ .fig .ft{font-family:var(--mono);font-weight:600;fill:var(--ink)}
+ .fig .fs{font-family:var(--mono);fill:#6b6b63}
+ .fig .fl{font-family:var(--mono);fill:#6b6b63;letter-spacing:.06em}
 
  /* proof */
  .proof{text-align:center}
@@ -211,42 +181,80 @@
  <!-- HOW -->
  <section id="how"><div class="pad">
   <div class="secnum">§02</div><div class="h2">The skill stays fixed. The memory evolves.</div>
-  <p style="max-width:66ch">A skill is its <code>SKILL.md</code> (the human-written method) plus the
-   context it has learned. The whole system in one view: deterministic sources feed one
-   self-curating memory; any skill recalls it <b>at invocation</b>; a shared service keeps a team
-   in sync. <b>No LLM in the loop.</b></p>
+  <p style="max-width:66ch">A skill is its method plus what it has learned about your repo. The whole
+   system is one loop — and the skill's text is never part of what changes:</p>
 
-  <div class="arch">
-   <div class="arch-flow">
-    <div class="arch-col">
-     <div class="arch-h">sources · deterministic · no LLM</div>
-     <div class="arch-box"><b>codebase</b><span>codegraph.py — conventions from source</span></div>
-     <div class="arch-box"><b>merged PRs</b><span>ingest_pr.py — decisions &amp; reviews</span></div>
-     <div class="arch-box"><b>test failures</b><span>ingest.py — facts from red tests</span></div>
-     <div class="arch-box"><b>manual notes</b><span>remember.py — by hand</span></div>
-    </div>
-    <div class="arch-arrow">▶</div>
-    <div class="arch-col mem">
-     <div class="arch-h">super memory</div>
-     <div class="arch-box big"><b>provenance facts</b><span>markdown · source / ref / topic / dates</span></div>
-     <div class="arch-box big hot"><b>self-curating</b><span>dedup → supersede → prune</span></div>
-    </div>
-    <div class="arch-arrow">▶</div>
-    <div class="arch-col">
-     <div class="arch-h">serving · at invocation</div>
-     <div class="arch-box"><b>recall.py</b><span>skill-scoped · query-ranked</span></div>
-     <div class="arch-box hot"><b>SKILL.md + context</b><span>inlined above the method, every invoke</span></div>
-    </div>
-   </div>
-   <div class="arch-team">
-    <span class="tlab">team · org</span>
-    <span class="tnode">merged PR</span><span class="tsep">▶</span>
-    <span class="tnode">GitHub webhook</span><span class="tsep">▶</span>
-    <span class="tnode hot">server rebuilds · codegraph + ingest + consolidate</span><span class="tsep">▶</span>
-    <span class="tnode">shared store</span><span class="tsep">▶</span>
-    <span class="tnode">every dev recalls over HTTPS</span>
-   </div>
-  </div>
+  <figure class="fig">
+   <svg viewBox="0 0 1040 388" role="img" aria-label="Architecture: the skill-evolution memory loop">
+    <defs>
+     <marker id="ah" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L7,3 L0,6" fill="none" stroke="#0c0d0a" stroke-width="1.5"/></marker>
+     <marker id="ao" markerWidth="10" markerHeight="10" refX="7.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L7,3 L0,6" fill="none" stroke="#ff3b00" stroke-width="1.5"/></marker>
+    </defs>
+
+    <!-- forward path -->
+    <line x1="280" y1="150" x2="398" y2="150" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <line x1="650" y1="150" x2="758" y2="150" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <text class="fl" x="339" y="140" text-anchor="middle" font-size="11">ingest</text>
+    <text class="fs" x="339" y="173" text-anchor="middle" font-size="10">no LLM</text>
+    <text class="fl" x="704" y="140" text-anchor="middle" font-size="11">recall</text>
+    <text class="fs" x="704" y="173" text-anchor="middle" font-size="10">at invocation</text>
+
+    <!-- feedback loop -->
+    <path d="M885,104 C885,46 525,46 525,104" fill="none" stroke="#ff3b00" stroke-width="1.5" marker-end="url(#ao)"/>
+    <text class="ft" x="705" y="38" text-anchor="middle" font-size="11.5" style="fill:#ff3b00">↻ every merge &amp; failing test → the skill gets sharper</text>
+
+    <!-- top tier -->
+    <rect x="30" y="104" width="250" height="92" fill="#fff" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="155" y="138" text-anchor="middle" font-size="17">Sources</text>
+    <text class="fs" x="155" y="160" text-anchor="middle" font-size="11">your codebase · merged PRs</text>
+    <text class="fs" x="155" y="177" text-anchor="middle" font-size="11">failing tests · manual notes</text>
+
+    <rect x="400" y="104" width="250" height="92" fill="#faf9f4" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="525" y="138" text-anchor="middle" font-size="17">Super memory</text>
+    <text class="fs" x="525" y="160" text-anchor="middle" font-size="11">one self-curating store</text>
+    <text class="fs" x="525" y="177" text-anchor="middle" font-size="11">dedup → supersede → prune</text>
+
+    <rect x="760" y="104" width="250" height="92" fill="#fff" stroke="#ff3b00" stroke-width="1.5"/>
+    <text class="ft" x="885" y="138" text-anchor="middle" font-size="17" style="fill:#ff3b00">The skill</text>
+    <text class="fs" x="885" y="160" text-anchor="middle" font-size="11">fixed method + repo context</text>
+    <text class="fs" x="885" y="177" text-anchor="middle" font-size="11">inlined at every invocation</text>
+
+    <!-- plane divider -->
+    <line x1="24" y1="250" x2="1016" y2="250" stroke="#0c0d0a" stroke-width="1" stroke-dasharray="3 4"/>
+    <rect x="400" y="241" width="240" height="18" fill="#fbfaf6"/>
+    <text class="fl" x="520" y="254" text-anchor="middle" font-size="10">SHARED DEPLOYMENT · TEAM / ORG</text>
+
+    <!-- same store, shared -->
+    <path d="M575,196 C620,230 650,262 664,306" fill="none" stroke="#6b6b63" stroke-width="1.2" stroke-dasharray="3 4"/>
+
+    <!-- bottom tier -->
+    <line x1="200" y1="336" x2="248" y2="336" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <line x1="520" y1="336" x2="566" y2="336" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <line x1="760" y1="336" x2="806" y2="336" stroke="#0c0d0a" stroke-width="1.5" marker-end="url(#ah)"/>
+    <text class="fs" x="224" y="328" text-anchor="middle" font-size="10">webhook</text>
+    <text class="fs" x="783" y="328" text-anchor="middle" font-size="10">HTTPS</text>
+
+    <rect x="24" y="306" width="176" height="60" fill="#fff" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="112" y="341" text-anchor="middle" font-size="14">Merged PR</text>
+
+    <rect x="250" y="306" width="270" height="60" fill="#fff" stroke="#ff3b00" stroke-width="1.5"/>
+    <text class="ft" x="385" y="332" text-anchor="middle" font-size="14" style="fill:#ff3b00">Rebuild</text>
+    <text class="fs" x="385" y="352" text-anchor="middle" font-size="10">scan · ingest · curate</text>
+
+    <rect x="568" y="306" width="192" height="60" fill="#faf9f4" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="664" y="341" text-anchor="middle" font-size="14">Shared memory</text>
+
+    <rect x="808" y="306" width="208" height="60" fill="#fff" stroke="#0c0d0a" stroke-width="1.5"/>
+    <text class="ft" x="912" y="332" text-anchor="middle" font-size="14">Every teammate</text>
+    <text class="fs" x="912" y="352" text-anchor="middle" font-size="10">recalls over HTTPS</text>
+   </svg>
+   <figcaption><b>Fig. 1 — Skill evolution.</b> The method is fixed; its memory evolves. Deterministic
+    sources become facts (no LLM); a self-curating store feeds the skill at invocation; every merge
+    or failing test loops back into the store, so the skill — and the agent using it — get sharper.
+    Deployed once, the same loop serves a whole team.</figcaption>
+  </figure>
   <div class="cols" style="margin-top:1.4rem;border:1.5px solid var(--line)">
    <div style="border-right:1.5px solid var(--line)"><div class="lab">on invocation</div><p style="margin:.4rem 0 0"><code>recall.py</code> runs at skill-load and inlines the skill's current repo context above the method — deterministic, skill-scoped.</p></div>
    <div><div class="lab">on merge / failure</div><p style="margin:.4rem 0 0"><code>ingest</code> mines PRs &amp; test failures into facts; <code>consolidate</code> curates them — dedup, supersede, prune — so memory tracks the repo.</p></div>
