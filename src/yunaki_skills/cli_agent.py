@@ -5,6 +5,27 @@ inside ``repo_path`` (the CLI edits files in place), and parses stdout into the
 trace string the evolution loop expects. It never raises into the loop: missing
 binary, non-zero exit, and timeout are all folded into the returned trace so the
 loop's existing error handling records them and proceeds.
+
+Parser correctness (verified against real CLI output schemas, 2026):
+
+  cursor-agent  ``--print --output-format json``
+    Single JSON object: ``{"type":"result","result":"<text>",...}``
+    Parser: ``cursor_json`` → ``_parse_single_json`` extracts ``result`` key.
+
+  gemini CLI  ``-p --output-format json``
+    Single JSON object: ``{"response":"<text>","stats":{...},"error":null,...}``
+    Parser: ``gemini_json`` → ``_parse_single_json`` extracts ``response`` key.
+
+  codex  ``exec --json``
+    JSONL event stream.  Only ``item.completed`` events where
+    ``item.type == "agent_message"`` contain the final assistant text in
+    ``item.text``.  Reasoning, file-change, and command events are skipped.
+    Parser: ``codex_jsonl`` → ``_parse_jsonl``.
+
+  aider  ``--message --yes-always``
+    Plain text.  Startup banner lines are stripped so only the assistant
+    response reaches the trace.
+    Parser: ``text`` → ``_parse_text``.
 """
 
 from __future__ import annotations
@@ -26,7 +47,21 @@ _MAX_TRACE_CHARS = 16000
 _MAX_STDERR_CHARS = 2000
 
 # Keys a single-object JSON CLI response might carry the final text under.
+# Order matters: cursor emits "result"; gemini emits "response".
 _JSON_TEXT_KEYS = ("result", "response", "text", "content", "message", "output")
+
+# Aider prints a startup banner before the assistant response.  These prefixes
+# identify banner lines that should be stripped from the trace.
+_AIDER_BANNER_PREFIXES = (
+    "Aider v",
+    "Model: ",
+    "Git repo: ",
+    "Repo-map: ",
+    "Added ",
+    "Restored ",
+    "Warning: ",
+    "Main model: ",
+)
 
 
 def _compose_prompt(task_description: str, skills: list[Skill]) -> str:
@@ -76,7 +111,17 @@ def _parse_single_json(stdout: str) -> str:
 
 
 def _parse_jsonl(stdout: str) -> str:
-    """Parser for codex JSONL streams — concatenate text from each event."""
+    """Parser for codex JSONL streams.
+
+    Codex emits one JSON object per line.  Only ``item.completed`` events where
+    ``item.type == "agent_message"`` contain the final assistant message text.
+    Earlier ``item.started`` / ``item.updated`` events for the same item carry
+    partial or empty text and are intentionally skipped.  Reasoning, file-change,
+    command-execution, and other item types are also skipped.
+
+    Falls back to raw stdout when no lines decode as JSON (e.g. when the binary
+    is missing or the stream is completely mangled).
+    """
     chunks: list[str] = []
     decoded_any = False
     for line in stdout.splitlines():
@@ -88,8 +133,18 @@ def _parse_jsonl(stdout: str) -> str:
         except (json.JSONDecodeError, ValueError):
             continue  # tolerate partial/non-JSON lines
         decoded_any = True
-        text = _extract_from_obj(event)
-        if text:
+        # Only harvest final agent_message text; skip reasoning and tool events.
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") != "item.completed":
+            continue
+        item = event.get("item")
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "agent_message":
+            continue
+        text = item.get("text", "")
+        if isinstance(text, str) and text.strip():
             chunks.append(text)
     if not decoded_any:
         return stdout  # nothing parseable — fall back to raw
@@ -97,7 +152,17 @@ def _parse_jsonl(stdout: str) -> str:
 
 
 def _parse_text(stdout: str) -> str:
-    return stdout
+    """Parser for plain-text CLIs (aider).
+
+    Strips aider's startup banner lines so only the assistant response reaches
+    the trace.  Any line that is empty or starts with a known banner prefix is
+    dropped.  If every line is a banner line (edge case: no response produced),
+    the raw stdout is returned so nothing is silently lost.
+    """
+    lines = stdout.splitlines()
+    body_lines = [line for line in lines if not any(line.startswith(p) for p in _AIDER_BANNER_PREFIXES)]
+    cleaned = "\n".join(body_lines).strip()
+    return cleaned if cleaned else stdout
 
 
 _PARSERS: dict[str, Callable[[str], str]] = {

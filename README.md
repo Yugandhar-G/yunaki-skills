@@ -14,7 +14,7 @@ Task → Coding Agent (host CLI or Gemini) → Eval Scorer (pytest [+ judge]) �
                               ↘ periodic consolidation: merge dupes, drop dead weight
 ```
 
-## IDE-agnostic execution (no Gemini key required)
+## Bring your own coding agent
 
 The coding agent is whatever CLI is installed on your machine. yunaki detects it,
 drives it in headless mode, and reuses its existing auth — so you do **not** need
@@ -30,6 +30,18 @@ Supported backends (detection-preference order): `claude`, `codex`,
 `YUNAKI_AGENT_BACKEND=gemini-sdk`. Skill meta-ops (extract/evolve/judge) route
 through the same backend by default; pin them to a Gemini model with
 `YUNAKI_SKILL_MODEL=gemini-2.5-flash`.
+
+### Backend verification status
+
+| Backend | Binary | Invocation | Parser | Status |
+|---------|--------|-----------|--------|--------|
+| `claude` | `claude` | `claude -p "<prompt>" --output-format json` | `claude_json` — extracts `.result` from single JSON object | **Verified end-to-end** (CI + real CLI) |
+| `cursor-agent` | `cursor-agent` | `cursor-agent -p "<prompt>" --output-format json --force` | `cursor_json` — extracts `.result` from single JSON object (`{"type":"result","result":"<text>",...}`) | **Schema verified** against real binary; end-to-end smoke blocked by missing auth |
+| `codex` | `codex` | `codex exec "<prompt>" --json` | `codex_jsonl` — harvests only `item.completed` events where `item.type == "agent_message"`, extracting `item.text`; reasoning/tool events skipped | **Best-effort** — schema verified against openai/codex source; no binary available in this env |
+| `gemini` | `gemini` | `gemini -p "<prompt>" --output-format json` | `gemini_json` — extracts `.response` from single JSON object (`{"response":"<text>","stats":{...},"error":null,...}`) | **Best-effort** — schema verified against google-gemini/gemini-cli source; no binary available in this env |
+| `aider` | `aider` | `aider --message "<prompt>" --yes-always` | `text` — strips startup banner lines (`Aider v`, `Model:`, `Git repo:`, etc.) before the response reaches the trace | **Best-effort** — schema verified against aider docs; no binary available in this env |
+
+"Schema verified" means the parser was confirmed correct against the real CLI output format from official source code and documentation, with realistic fixture tests covering the full event/field structure. "Verified end-to-end" means the parser was additionally exercised against the actual running binary.
 
 ## Setup
 
