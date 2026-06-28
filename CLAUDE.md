@@ -1,67 +1,54 @@
-# Yunaki Skills — Project Context
+# Skill Evolution — Project Context
 
 ## What This Is
-Self-evolving skills for coding agents: run a task, score it with tests, extract
-reusable skills from the trace, inject them into future runs, and measure the
-improvement honestly via a no-skills control arm.
+Skills that improve over time **without being rewritten**. A skill = its `SKILL.md` (the
+static, human-written method) + the **context it has learned** about this repo. We never
+edit the skill body — we evolve its context. Rewriting skills with an LLM was measured to
+degrade them (see `self-evolution-v1/`, the archived prior approach), so this project
+moves the evolution into the context, triggered by hooks.
 
-## Architecture
-```
-Task → Coding agent (detected host CLI; Gemini SDK fallback) → Eval Scorer (pytest [+ judge]) →
-  if failed → Skill Extractor (single-trace or contrastive) → Skill Bank →
-  Skill Retriever (semantic, optionally score-weighted) → inject into next agent run →
-  run again → measure skill_delta (vs control arm)
-       ↘ periodic consolidation: merge duplicates, drop dead weight
-```
+## Trigger points (the only moving parts)
+- **Invocation trigger**: every `SKILL.md` carries a `!command` (native Claude Code dynamic
+  context) that runs `recall.py` at skill-load time and inlines the skill's current repo
+  context above the method. Fires on explicit and auto-invoked skills (confirmed empirically).
+- **Failure trigger**: `ingest.py` mines failing test output for repo facts (deterministic,
+  no LLM) and writes them to the skill's context. Next invocation is smarter.
 
-## Key Files
-- `interfaces.py` — Pydantic models + interface signatures (THE CONTRACT)
-- `config.py` — env var loader
-- `agent_specs.py` — declarative registry of coding-agent CLI backends (data, not code)
-- `cli_agent.py` — generic adapter that drives a backend CLI + parses its output
-- `agent_factory.py` — `build_agent()`: backend override → auto-detect → Gemini SDK fallback
-- `antigravity_client.py` — Gemini SDK agent (the fallback backend)
-- `skill_llm.py` — single LLM seam for meta-ops (extract/evolve/judge/ingest); host CLI by default
-- `skill_extractor.py` — extract a skill from a trace (`extract` + `extract_contrastive`)
-- `skill_evolver.py` — refine an existing skill from new evidence
-- `skill_retriever.py` — semantic + pattern retrieval + injection
-- `skill_bank.py` — MongoDB-backed storage; ranking, merge/drop, history
-- `skill_consolidator.py` — merge near-duplicates, drop ineffective skills
-- `reward.py` — composite pytest×judge reward (advisory, opt-in)
-- `contrastive_runner.py` — N-rollout contrastive extraction
-- `governance.py` — skill status lifecycle / auto-approve policy
-- `eval_scorer.py` — pytest-based evaluation
-- `llm_judge.py` — LLM-as-judge code-quality scoring
-- `task_runner.py` — orchestrates the full evolution loop (control arm + iterations)
-- `main.py` — FastAPI backend + dashboard API
+## Key files (all at repo root, stdlib-only, never raise to the caller)
+- `recall.py` — invocation trigger. Reads the local context store (primary, skill-scoped);
+  claude-mem is an OPT-IN secondary source (`YUNAKI_USE_CLAUDE_MEM=1`, default off). Prints a
+  markdown block or nothing. Auto-detects claude-mem's port from `~/.claude-mem/worker.pid`.
+- `ingest.py` — failure trigger. `pytest ... | ./ingest.py --skill X` extracts facts
+  (missing deps, failed-test conventions, expected-vs-actual examples). No LLM.
+- `facts.py` — the context store: per-project markdown facts with `skills:` frontmatter tags.
+- `remember.py` — record a fact by hand (`--skill X --title ... "body"`).
+- `binder.py` — injects/removes the per-skill `!command` block in `SKILL.md`. Idempotent,
+  marker-scoped, reversible; **never edits skill content**. `bind_all` walks `~/.claude/skills`.
+  Shell-injection-safe (shlex-quoted + name allowlist).
+- `hooks/session-start-bind.sh` — SessionStart hook to re-bind newly installed skills.
+- `tests/` — offline only (no network/LLM). `conftest.py` puts repo root on `sys.path`.
+- `self-evolution-v1/` — archived prior project (rewrote skills + md→json). Do not modify.
 
-## Credentials
-In `.env`. `GEMINI_API_KEY` is now **optional** — only needed when no coding-agent
-CLI is detected or when `YUNAKI_SKILL_MODEL` pins a Gemini model. Backend selection:
-`YUNAKI_AGENT_BACKEND`. Other vars: `MONGODB_URI`, `DO_MODEL_ACCESS_KEY`, `AUTH_ENABLED`.
-NEVER commit `.env`.
+## No conversion / no rewriting
+Skills stay markdown. Nothing is converted to JSON. The binder's hook line is the only edit
+to a `SKILL.md`, and context lives in separate markdown facts.
 
-## MongoDB
-Database: `yunaki`. Collections: `skills`, `skills_history`, `skill_embeddings`,
-`runs`, `evaluations`, plus auth (`users`, `repos`) when `AUTH_ENABLED`.
+## Conventions
+- Stdlib-only; `recall.py`/`facts.py` must never raise — recall returns "" on any failure so
+  a bound skill behaves exactly as unbound.
+- No LLM in recall or ingest. Recall is deterministic; ingest is regex over test output.
+- Tests are offline.
 
-## Target Repo
-`target_repo/` — a small FastAPI service with passing and failing tests, used as a
-demo/eval fixture; the agent implements the failing endpoints.
+## Measured result
+Real Claude agents + real pytest on a convention-decisive task: `SKILL.md` only = 0/3 passed;
+after one failure auto-learned the convention (no LLM), `SKILL.md` + evolved context = 3/3.
+The skill evolved without editing `SKILL.md`. (N=3/arm; convention-decisive task.)
 
 ## Commands
 ```bash
-pip install -e .                                   # installs the `yunaki` / `yunaki-server` CLIs
-yunaki doctor                                      # show the detected coding-agent backend
-cd target_repo && python -m pytest test_app.py -v  # run the fixture's tests
-yunaki-server                                      # start the dashboard + API on :8000
-pytest                                             # run the suite (YUNAKI_IT=1 to include real-CLI tests)
+python3 -m pytest tests/ -v                       # offline suite (71 tests)
+python3 -m ruff check *.py tests/                 # lint
+./binder.py --all                                 # wire the invocation trigger onto all skills
+./recall.py --skill <name> --query "..."          # what a skill recalls
+pytest ... | ./ingest.py --skill <name>           # learn from a failure
 ```
-
-## Conventions
-- Follow `interfaces.py` method signatures exactly
-- All classes must work with no-arg constructors (load config internally)
-- Use `yunaki_skills.config.get()` for env vars
-- Route all skill-model LLM calls through `skill_llm.complete_json` (never import `genai` directly)
-- Skills are JSON objects matching the `Skill` Pydantic model
-- Never report `score_after − score_before` as the result — `skill_delta` (vs control) is the honest metric
