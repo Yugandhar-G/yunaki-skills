@@ -1,0 +1,24 @@
+[project]
+name = "skill-memory"
+version = "0.1.0"
+description = "Skill-bound memory for coding agents, built on claude-mem"
+requires-python = ">=3.11"
+dependencies = []  # recall.py / binder.py are stdlib-only by design
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+# S101: asserts are fine in tests.
+# S608: recall.py builds SQL with quoted identifiers (_quote_id) from the DB's own
+#       schema and binds all user values as params — safe by construction; the rule
+#       only sees the f-string and can't tell.
+# S310: recall.py opens only http://localhost URLs (host hardcoded, port range-validated);
+#       the file:/custom-scheme risk this rule guards against cannot occur.
+ignore = ["S101", "S608", "S310"]
