@@ -101,9 +101,22 @@
  pre .c{color:#9c9c92}
  pre .a{color:var(--acc)}
 
+ /* plain-English learn story */
+ .story{display:grid;grid-template-columns:repeat(3,1fr);border:1.5px solid var(--line);margin:1.3rem 0}
+ .story .step{padding:1.1rem 1.15rem;border-right:1.5px solid var(--line)}
+ .story .step:last-child{border-right:0}
+ @media(max-width:760px){.story{grid-template-columns:1fr}.story .step{border-right:0;border-bottom:1.5px solid var(--line)}.story .step:last-child{border-bottom:0}}
+ .story .ask{font-size:.96rem;color:#26261f;margin:.1rem 0 .2rem}
+ .story .out{font-family:var(--mono);font-size:.82rem;border:1.5px solid var(--line);padding:.5rem .6rem;margin:.7rem 0;background:#fff}
+ .story .wrong{border-color:#c43a1e;color:#a52f16}
+ .story .right{border-color:#1c8c52;color:#136b3c}
+ .story .learn{background:var(--ink);color:#eee;border-color:var(--ink)}
+ .story .why{font-size:.9rem;color:#3a3a32;margin:.4rem 0 0}
+ .story .why b{color:var(--ink)}
+
  /* console receipts — real terminal screenshots */
  .shot{display:block;width:100%;height:auto;border:1.5px solid var(--line);margin-top:1.1rem}
- .cap{font-family:var(--mono);font-size:.66rem;color:var(--soft);margin:.35rem 0 0}
+ .cap{font-family:var(--mono);font-size:.66rem;color:var(--soft);margin:.35rem 0 0;line-height:1.5}
  .note{font-family:var(--mono);font-size:.72rem;color:var(--soft);margin-top:1rem}
 
  footer{padding:1rem;font-family:var(--mono);font-size:.7rem;color:var(--soft);
@@ -183,31 +196,53 @@
   </div>
  </div></section>
 
- <!-- PROOF + RECEIPTS -->
+ <!-- PROOF: PLAIN-ENGLISH STORY + RECEIPTS -->
  <section id="proof"><div class="pad">
-  <div class="secnum">§03 · proof — real runs, not mockups</div>
-  <div class="proof" style="margin:1.4rem 0 .4rem">
-   <div class="big">0/3 <span style="color:var(--soft)">→</span> <i>3/3</i></div>
-   <p>A convention-decisive task (underscore slugs) with <b>real Claude agents + real
-    pytest</b>: 0 of 3 passed with the skill alone, 3 of 3 after one auto-learned fact.
-    No LLM. The skill body never changed.</p>
+  <div class="secnum">§03 · watch it learn</div>
+  <div class="h2">The AI makes a mistake on your codebase — then never makes it again.</div>
+  <p style="max-width:64ch">A real, end-to-end example. You don't need to know any of the jargon:</p>
+
+  <div class="story">
+   <div class="step">
+    <div class="lab">1 · ask the ai</div>
+    <p class="ask">“Turn this page title into a URL.”</p>
+    <div class="out wrong">“My Cool Title”&nbsp; → &nbsp;my-cool-title</div>
+    <p class="why"><b>Wrong here.</b> This codebase writes URLs with underscores
+     (<code>my_cool_title</code>), not dashes. The AI had no way to know that house rule — so it broke the app.</p>
+   </div>
+   <div class="step">
+    <div class="lab">2 · it learns — by itself</div>
+    <p class="ask">The failed check teaches the memory one fact.</p>
+    <div class="out learn">“in this codebase, URLs use underscores, not dashes”</div>
+    <p class="why">No human corrected it. <b>No second AI. Zero AI calls.</b> The assistant's own
+     instructions are never edited — only what it <em>knows</em> grows.</p>
+   </div>
+   <div class="step">
+    <div class="lab">3 · ask again — same ai</div>
+    <p class="ask">Same request, moments later.</p>
+    <div class="out right">“My Cool Title”&nbsp; → &nbsp;my_cool_title</div>
+    <p class="why"><b>Right now</b> — and it stays right, for you and every teammate. It learned
+     your codebase's rule once, from one failure.</p>
+   </div>
   </div>
 
-  <div class="lab" style="margin-top:1.8rem">receipts · real terminal output, captured verbatim</div>
+  <p style="max-width:66ch">We re-ran this with <b>real Claude agents</b> across three different
+   house rules at once. Without the learned context they got <b>1 of 3</b> right; with it, <b>3 of 3</b>.
+   Here are the actual receipts — real terminal output, every command re-runnable:</p>
 
-  <img class="shot" src="demo/screenshots/ab.png" alt="A/B: real Claude agents, control 1/3 vs recalled-context 3/3">
-  <p class="cap">live A/B — 6 real Claude agents, same task; the only difference is the recalled
-   convention. control 1/3 → context 3/3. (the impls are committed in <code>demo/ab/</code>;
-   <code>python3 demo/ab.py</code> re-scores them.)</p>
+  <img class="shot" src="demo/screenshots/ab.png" alt="Real Claude agents: 1 of 3 without context, 3 of 3 with it">
+  <p class="cap">Three house rules tested at once. <b>slug</b> = the URL form of a title (dashes vs
+   underscores). <b>status</b> = which error number the app returns when input is bad (the AI guessed
+   400; this app uses 422). <b>timestamp</b> = the date format. Left column = AI with no learned
+   context (1/3); right = same AI, with the recalled rule (3/3). Re-run: <code>python3 demo/ab.py</code>.</p>
 
-  <img class="shot" src="demo/screenshots/evolve.png" alt="One skill accumulates three conventions, body unchanged">
-  <p class="cap">one skill learns three conventions from failing tests, no LLM, body unchanged
-   — <code>./demo/skill-evolves.sh</code></p>
+  <img class="shot" src="demo/screenshots/evolve.png" alt="One skill learns all three house rules; its file is verified unchanged">
+  <p class="cap">One skill picking up all three house rules from failed checks — and its instruction
+   file is <b>verified</b> unchanged (a real <code>git diff</code>), not claimed. <code>./demo/skill-evolves.sh</code>.</p>
 
-  <img class="shot" src="demo/screenshots/live.png" alt="Live recall over HTTPS from the deployed service">
-  <p class="cap">the shared memory, live over real HTTPS — recall + stats from the deployed
-   service, fed by a GitHub PR webhook (the fact count is whatever <code>/stats</code>
-   returned when the shot was taken).</p>
+  <img class="shot" src="demo/screenshots/live.png" alt="The shared memory answering live over HTTPS">
+  <p class="cap">The same memory, shared for a whole team and answering live over HTTPS — fed
+   automatically from your merged pull requests.</p>
  </div></section>
 
  <!-- DEPLOY -->
