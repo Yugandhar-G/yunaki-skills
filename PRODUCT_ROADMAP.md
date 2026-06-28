@@ -1,33 +1,31 @@
-# Yunaki Skills — Product Roadmap
+# Yunaki Skills — Roadmap
 
-## Hackathon Demo (NOW)
-✅ Skill evolution loop: 57% → 100%
-✅ MongoDB skill bank with semantic search
-✅ Gemini-powered agent + skill extraction
-✅ Basic dashboard
+Status legend: ✅ shipped · 🟡 partial · ⬜ planned
 
-## Product Build (THIS SESSION)
-### P0 — Core Product
-- [ ] Dockerized deployment (docker-compose: app + mongo + redis)
-- [ ] Proper API with auth (API key per user)
-- [ ] WebSocket for live evolution progress
-- [ ] Multi-repo support (not just target_repo)
-- [ ] Skill versioning + rollback
-- [ ] Skill governance (approve/reject/merge skills)
-- [ ] LLM-as-Judge eval (DO Inference) as alternative to pytest
-- [ ] Real Antigravity integration (sandboxed code execution)
-- [ ] SDK: `pip install yunaki-skills` — use in any Python project
+## Shipped
+- ✅ Evolution loop with an honest **control arm** + `skill_delta` (no fabricated scores)
+- ✅ MongoDB skill bank with semantic search (hash-embedding fallback when offline)
+- ✅ IDE-agnostic execution — drives the host coding CLI (claude/codex/cursor/gemini/aider),
+  no Gemini key required (Gemini SDK is the fallback)
+- ✅ Skill model meta-ops routed through one seam (`skill_llm`), backend-agnostic
+- ✅ Contrastive extraction (learn from a passing-vs-failing pair)
+- ✅ Composite reward (pytest × LLM-judge align/quality; advisory, never flips the gate)
+- ✅ Score-weighted retrieval (opt-in) + skill consolidation (merge near-dupes, drop dead weight)
+- ✅ Skill governance (status lifecycle, approve/reject, auto-approve toggle)
+- ✅ Skill versioning + history (archive-on-update)
+- ✅ REST + WebSocket API with per-user API-key auth; multi-repo namespacing
+- ✅ Dockerized stack (docker-compose: app + mongo + redis)
 
-### P1 — Dashboard
-- [ ] Real-time evolution progress (WebSocket)
-- [ ] Skill graph visualization (D3.js)
-- [ ] Improvement curve charts (Chart.js)
-- [ ] Skill diff viewer (before/after evolution)
-- [ ] Run history with drill-down
+## In progress
+- 🟡 Dashboard — basic UI + live run streaming exist; richer charts/diff viewer are rough
+- 🟡 Skill marketplace — `publish` + `search_marketplace` exist; no rating/sharing UX
+- 🟡 Multi-repo — namespacing works; per-repo management UX is thin
+- 🟡 Distributable SDK — installable from source (`pip install -e .`); not yet published to PyPI
 
-### P2 — Platform
-- [ ] Skill marketplace (share skills across users)
-- [ ] Skill rating system (upvote/downvote)
-- [ ] Multi-model support (not just Gemini — DO Inference Router)
-- [ ] Webhook integrations (GitHub, GitLab)
-- [ ] Governance UI (approve/reject skill changes)
+## Planned
+- ⬜ Other backends (codex/cursor/gemini/aider) verified end-to-end (only `claude` is today)
+- ⬜ Skill rollback UI
+- ⬜ Skill graph + before/after diff visualization
+- ⬜ Skill rating (upvote/downvote) and cross-user sharing
+- ⬜ Webhook integrations (GitHub/GitLab)
+- ⬜ Scheduled background consolidation
