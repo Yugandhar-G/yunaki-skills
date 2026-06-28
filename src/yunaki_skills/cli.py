@@ -32,11 +32,16 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(result.model_dump(), indent=2))
     else:
-        delta = result.score_after - result.score_before
-        print(
-            f"\n{result.score_before:.0f}% -> {result.score_after:.0f}% "
-            f"(Δ{delta:+.0f}) in {result.iterations} iteration(s)"
-        )
+        print(f"\n{result.score_before:.0f}% -> {result.score_after:.0f}% in {result.iterations} iteration(s)")
+        # The honest measure is skill_delta (vs the no-skills control arm), NOT
+        # score_after - score_before, which conflates "the agent can code" with
+        # "the skills helped."
+        if result.score_control is not None:
+            print(f"  control (no skills): {result.score_control:.0f}%")
+        if result.skill_delta is not None:
+            print(f"  skill_delta:         {result.skill_delta:+.0f}%  (effect of skills vs control)")
+        else:
+            print("  skill_delta:         n/a (control arm did not run)")
         print(f"  used:    {result.skills_used}")
         print(f"  created: {result.skills_created}")
         print(f"  evolved: {result.skills_evolved}")

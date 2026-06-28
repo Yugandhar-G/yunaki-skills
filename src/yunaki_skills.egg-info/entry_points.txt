@@ -1,3 +1,0 @@
-[console_scripts]
-yunaki = yunaki_skills.cli:main
-yunaki-server = yunaki_skills.main:run
