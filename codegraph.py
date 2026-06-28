@@ -124,8 +124,12 @@ _CONV_FACT = {
 }
 
 
-def convention_facts(graph: dict) -> list[tuple[str, str]]:
-    """Repo-wide conventions (held by a third+ of modules) as (title, body) facts."""
+def convention_facts(graph: dict) -> list[tuple[str, str, str]]:
+    """Repo-wide conventions (held by a third+ of modules) as (topic, title, body) facts.
+
+    The convention key IS the topic — so curation supersedes each convention against its
+    own newest scan (refresh-in-place), never collapses distinct conventions together.
+    """
     held: dict[str, list[str]] = {}
     for node in graph["nodes"]:
         for conv in node["conventions"]:
@@ -136,12 +140,13 @@ def convention_facts(graph: dict) -> list[tuple[str, str]]:
         if conv in _CONV_FACT and len(mods) >= threshold:
             title, body = _CONV_FACT[conv]
             ev = ", ".join(mods[:6]) + ("…" if len(mods) > 6 else "")
-            out.append((title, f"{body} (proven in {len(mods)} modules: {ev})"))
+            out.append((conv, title, f"{body} (proven in {len(mods)} modules: {ev})"))
     return out
 
 
 def render_text(graph: dict) -> str:
-    lines = [f"codebase graph — {len(graph['nodes'])} modules, {len(graph['edges'])} import edges", ""]
+    header = f"codebase graph: {len(graph['nodes'])} modules, {len(graph['edges'])} import edges"
+    lines = [header, ""]
     out_edges: dict[str, list[str]] = {}
     for e in graph["edges"]:
         out_edges.setdefault(e["src"], []).append(e["dst"])
@@ -157,18 +162,26 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Build a deterministic graph of a codebase (no LLM).")
     p.add_argument("--root", default=".", help="repo root to scan")
     p.add_argument("--json", action="store_true", help="emit graph as JSON")
-    p.add_argument("--write", action="store_true", help="write proven conventions into a skill's memory")
-    p.add_argument("--skill", default="python-patterns", help="skill to tag written facts with")
+    p.add_argument("--write", action="store_true", help="write proven conventions to memory")
+    p.add_argument(
+        "--skill",
+        default=None,
+        help="scope to one skill; omit for repo-wide GLOBAL conventions every skill recalls",
+    )
     args = p.parse_args(argv)
     graph = build_graph(args.root)
     if args.write:
         import facts  # local; keeps codegraph itself stdlib-only
 
+        # [] = global: recalled by EVERY skill on load, no tagging, no failure required.
+        # Repo-wide conventions are house rules — they belong to the repo, not one skill.
+        skills = [args.skill] if args.skill else []
         paths = [
-            facts.write_fact([args.skill], title, body, source="codebase", ref="codegraph", topic="code-style")
-            for title, body in convention_facts(graph)
+            facts.write_fact(skills, title, body, source="codebase", ref="codegraph", topic=conv)
+            for conv, title, body in convention_facts(graph)
         ]
-        print(f"wrote {len(paths)} convention facts into skill '{args.skill}':")
+        scope = f"skill '{args.skill}'" if args.skill else "GLOBAL: every skill recalls these"
+        print(f"wrote {len(paths)} repo-convention facts · scope: {scope}")
         for pth in paths:
             print("  " + pth)
         return 0
