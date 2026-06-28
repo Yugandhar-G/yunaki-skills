@@ -71,8 +71,8 @@ def install(hooks_dir: str, script_path: str = _DEFAULT_SCRIPT) -> str:
     content = body + "\n\n" + build_block(script_path)
     with open(hook, "w", encoding="utf-8") as fh:
         fh.write(content)
-    mode = os.stat(hook).st_mode
-    os.chmod(hook, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # Git hooks must be executable by the owner; owner-exec only keeps it least-privilege.
+    os.chmod(hook, os.stat(hook).st_mode | stat.S_IXUSR)
     return hook
 
 
