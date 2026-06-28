@@ -1,26 +1,30 @@
 # Install
 
-Wire the two trigger points onto your skills. No build step, stdlib-only, markdown in/out.
+No build step, stdlib-only, markdown in/out. Works for anyone — nothing is hardcoded to a
+particular user or repo: paths resolve from your clone and `~/.claude`, and the PR ingester
+auto-detects the repo from its git remote. Requires Python 3.11+ (and `gh`, authenticated,
+only if you use the PR source).
 
-## 1. Wire the invocation trigger into your skills
-
-`binder.py` injects one marker-delimited `!command` block into each `SKILL.md` so that, at
-skill-load time, `recall.py` inlines the skill's learned repo context above the method.
-Idempotent (re-binding replaces), reversible (`--unbind`), and it never edits skill content.
+## 1. One-command setup
 
 ```bash
-./binder.py --all                                   # bind every ~/.claude/skills/*/SKILL.md
-./binder.py --skill ~/.claude/skills/api-design/SKILL.md   # one skill
-./binder.py --all --unbind                          # remove the blocks
+git clone <this-repo> && cd <this-repo>
+./install.sh
 ```
 
-Keep new skills wired automatically — register the SessionStart hook in
-`~/.claude/settings.json` (use the absolute path from `pwd`):
+That binds every `~/.claude/skills/*/SKILL.md` (so each skill recalls repo context at load
+time) and registers a SessionStart hook (so newly-installed skills bind automatically). It's
+idempotent and reversible:
 
-```json
-{ "hooks": { "SessionStart": [ { "hooks": [
-  { "type": "command", "command": "/ABSOLUTE/PATH/hooks/session-start-bind.sh" }
-] } ] } }
+```bash
+./install.sh --uninstall      # unbind skills + remove the hook
+```
+
+Prefer to do it by hand? The installer just runs these:
+
+```bash
+./binder.py --all             # bind every skill (idempotent; --unbind to reverse)
+./register_hook.py            # add the SessionStart re-bind hook to ~/.claude/settings.json
 ```
 
 ## 2. Give skills context (the failure trigger + manual)
@@ -36,13 +40,15 @@ pytest -ra ... 2>&1 | ./ingest.py --skill api-design
 
 ## 3. Build the super memory from PRs (and let it self-evolve)
 
-Seed the store from the repo's merged PRs (verbatim titles, review comments, commit
-subjects via `gh` — deterministic, no LLM), then curate it:
+Run these from inside any git repo you work in — the repo is auto-detected from its git
+remote. They mine the repo's merged PRs (verbatim titles, review comments, commit subjects
+via `gh` — deterministic, no LLM), then curate the store:
 
 ```bash
-./ingest_pr.py --repo owner/name --limit 30     # or just ./ingest_pr.py inside the repo
-./consolidate.py --dry-run                       # preview dedup/supersede/prune
-./consolidate.py                                 # apply
+cd /path/to/your/repo
+/path/to/this/ingest_pr.py                       # auto-detects the repo (--repo owner/name to override)
+/path/to/this/consolidate.py --dry-run           # preview dedup/supersede/prune
+/path/to/this/consolidate.py                      # apply
 ```
 
 Wire the self-evolution so it keeps up automatically — a git `post-merge` hook re-ingests

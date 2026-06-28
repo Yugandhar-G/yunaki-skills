@@ -64,6 +64,8 @@ harden the headline number.)
 | `git_hook.py` | install the `post-merge` trigger (re-ingest + consolidate on pull/merge). Marker-scoped, reversible. |
 | `remember.py` | record a fact by hand. |
 | `binder.py` | wire the invocation trigger into every `SKILL.md` (idempotent, reversible). |
+| `register_hook.py` | add the SessionStart re-bind hook to `settings.json` (idempotent, never clobbers other config). |
+| `install.sh` | one-command setup for any user: bind skills + register the hook (`--uninstall` reverses). |
 | `facts.py` | the context store (markdown, per-skill, per-project, provenance-tagged). |
 
 ## No conversion, no rewriting
@@ -85,9 +87,20 @@ worker runtime. The local store is the skill-scoped, deterministic primary.
 converted md→json to do so). We measured that it degrades skills, which is why this
 project evolves context instead. Left intact for reference; don't modify it.
 
+## Install
+
+Works for anyone — nothing is hardcoded to a user or repo (paths resolve from your clone
+and `~/.claude`; the PR ingester auto-detects the repo from its git remote). Python 3.11+.
+
+```bash
+git clone <this-repo> && cd <this-repo>
+./install.sh        # binds every skill + registers the SessionStart re-bind hook (reversible)
+```
+
+See [install.md](install.md) for the per-step breakdown and turning on the PR super memory.
+
 ## Develop
 
 ```bash
 python3 -m pytest tests/ -v     # offline; no network, no LLM
 ```
-See [install.md](install.md) to wire the triggers onto your skills.
