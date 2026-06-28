@@ -38,18 +38,19 @@
    border-top:1px solid var(--line);padding-top:1.1rem}
 </style></head><body><main>
  <div class="badge"><span class="dot"></span> live</div>
- <h1>Skills that <em>learn</em> your repo.</h1>
- <p class="lede">A shared super memory for coding-agent skills. It mines your merged PRs and
-  failing tests into repo-specific facts and recalls them into skills at load time —
-  <strong>no LLM in the learning loop, and the skill files are never rewritten.</strong></p>
+ <h1>Skills that <em>keep learning</em> your repo.</h1>
+ <p class="lede">A shared super memory for coding-agent skills. Every merged PR and failing
+  test becomes a repo-specific fact that's recalled into skills at load time — so your skills
+  keep evolving and the agents using them get better with every change.
+  <strong>No LLM in the learning loop, and the skill files are never rewritten.</strong></p>
  <section class="stats">
   <div class="card"><b>__FACTS__</b><span>facts learned</span></div>
   <div class="card"><b>__REPOS__</b><span>__REPO_WORD__ tracked</span></div>
   <div class="card"><b>0</b><span>LLM calls to learn</span></div>
   <div class="card"><b>PRs · tests</b><span>knowledge sources</span></div>
  </section>
- <p class="flow">merged PR / failing test &rarr; <b>deterministic fact</b> &rarr; recalled into
-  the skill &rarr; the agent stops repeating the mistake</p>
+ <p class="flow">every merged PR &amp; failing test &rarr; <b>a deterministic fact</b> &rarr; the
+  skill keeps evolving &rarr; and the agents using it evolve with it</p>
  <section class="api">
   <code>GET /health</code><code>GET /recall</code><small>per-repo token</small>
   <code>POST /webhook</code><small>GitHub</small>

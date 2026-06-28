@@ -62,8 +62,8 @@ SHOW: the live `curl` returning real PR knowledge over HTTPS. (Cut to the browse
 > GitHub webhook. These facts came from this repo's actual pull requests."
 
 ### 2:50–3:00 · Close
-> "Same skill, never rewritten. It learns — on your machine and across your team. That's
-> skill evolution."
+> "We never rewrote the skill — it keeps evolving, and every agent that uses it evolves with
+> it. Every PR, every test makes them sharper. That's skill evolution."
 
 ---
 

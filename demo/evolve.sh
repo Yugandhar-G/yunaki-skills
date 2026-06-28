@@ -60,4 +60,4 @@ else
   dim "set SUPERMEM_URL and SUPERMEM_TOKEN to show the live deployed service here."
 fi
 echo
-b "Same skill. We never rewrote it. It learned — locally and at team scale."
+b "We never rewrote the skill. It keeps evolving — and every agent that uses it evolves with it. Locally and team-wide."
