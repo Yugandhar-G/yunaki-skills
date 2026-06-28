@@ -34,7 +34,30 @@ pytest -ra ... 2>&1 | ./ingest.py --skill api-design
   "FastAPI EmailStr requires the email-validator package or imports 500 at startup."
 ```
 
-## 3. Verify
+## 3. Build the super memory from PRs (and let it self-evolve)
+
+Seed the store from the repo's merged PRs (verbatim titles, review comments, commit
+subjects via `gh` — deterministic, no LLM), then curate it:
+
+```bash
+./ingest_pr.py --repo owner/name --limit 30     # or just ./ingest_pr.py inside the repo
+./consolidate.py --dry-run                       # preview dedup/supersede/prune
+./consolidate.py                                 # apply
+```
+
+Wire the self-evolution so it keeps up automatically — a git `post-merge` hook re-ingests
+new PRs and re-curates on every `git pull`/`git merge`:
+
+```bash
+./ingest_pr.py --install-git-hook                # idempotent; --uninstall-git-hook to remove
+```
+
+Ingest is incremental (a per-project watermark tracks the highest PR seen). `gh` must be
+installed and authenticated; if it isn't, ingestion writes nothing rather than failing.
+Tune curation with `YUNAKI_SUPERSEDE_KEEP` (facts kept per topic, default 2) and
+`YUNAKI_FACT_TTL_DAYS` (age-prune, default off).
+
+## 4. Verify
 
 ```bash
 ./recall.py --skill api-design --query "validation"   # prints the skill's context, or nothing

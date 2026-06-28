@@ -76,7 +76,7 @@ def ingest(output: str, skills: list[str], project: str | None = None) -> list[s
     """Extract facts from output and write them to the store. Returns written paths."""
     paths = []
     for title, body in extract_facts(output):
-        paths.append(facts.write_fact(skills, title, body, project=project))
+        paths.append(facts.write_fact(skills, title, body, project=project, source="test"))
     return paths
 
 
