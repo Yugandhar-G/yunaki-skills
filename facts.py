@@ -35,6 +35,13 @@ import re
 import zlib
 
 DEFAULT_ROOT = os.path.expanduser(os.environ.get("YUNAKI_FACTS_DIR", "~/.claude/skill-memory"))
+# Stopwords so a rich lens (the skill's description) doesn't match every fact via common words
+# like "the/use/data" — only meaningful terms decide relevance.
+_STOP = frozenset(
+    "a an and are as at be by for from has have in into is it its of on or that the to use "
+    "used using with you your we our they this these those not no do can should when where "
+    "which while via per also more most including include used".split()
+)
 _SKILLS_RE = re.compile(r"^skills:\s*\[(.*?)\]\s*$", re.MULTILINE)
 _TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
 _SOURCE_RE = re.compile(r"^source:\s*(.+?)\s*$", re.MULTILINE)
@@ -123,17 +130,16 @@ def _relevant(skills: list[str], skill: str) -> bool:
     return (not skills) or (skill in skills)
 
 
-def _rank(matches: list[Fact], query: str) -> list[Fact]:
-    """Rank facts by BM25 over each fact's text (title weighted), most relevant first.
+def _bm25_scored(matches: list[Fact], query: str) -> list[tuple[Fact, float]]:
+    """Score facts by BM25 against the query; return (fact, score) sorted most-relevant first.
 
-    Deterministic and stdlib-only. BM25 beats raw term-count because it down-weights terms
-    common across the store (IDF) and normalises for length, so a short fact that hits a
-    rare query term outranks a long boilerplate fact that merely repeats a common one.
+    Deterministic, stdlib-only. BM25 down-weights terms common across the store (IDF) and
+    normalises for length, so a short fact that hits a rare query term outranks a long
+    boilerplate fact that merely repeats a common one. Title counted twice.
     """
     terms = [w.lower() for w in re.findall(r"\w+", query)]
     if not terms or not matches:
-        return matches
-    # title counted twice so a title hit outweighs the same word buried in the body
+        return [(m, 0.0) for m in matches]
     docs = [re.findall(r"\w+", f"{f.title} {f.title} {f.body}".lower()) for f in matches]
     n = len(docs)
     avgdl = (sum(len(d) for d in docs) / n) or 1.0
@@ -142,23 +148,22 @@ def _rank(matches: list[Fact], query: str) -> list[Fact]:
         for t in set(d):
             df[t] = df.get(t, 0) + 1
     k1, b = 1.5, 0.75
-    uniq_terms = set(terms)
-
-    def score(idx: int) -> float:
-        d = docs[idx]
+    uniq = {t for t in terms if len(t) > 2 and t not in _STOP}
+    if not uniq:  # query was all stopwords/short tokens — nothing meaningful to rank on
+        return [(m, 0.0) for m in matches]
+    out: list[tuple[Fact, float]] = []
+    for f, d in zip(matches, docs, strict=False):
         dl = len(d) or 1
         total = 0.0
-        for t in uniq_terms:
+        for t in uniq:
             tf = d.count(t)
             if not tf:
                 continue
             idf = math.log(1 + (n - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5))
             total += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avgdl))
-        return total
-
-    # stable sort: equal scores keep their on-disk order
-    order = sorted(range(n), key=score, reverse=True)
-    return [matches[i] for i in order]
+        out.append((f, total))
+    out.sort(key=lambda x: x[1], reverse=True)  # stable: equal scores keep on-disk order
+    return out
 
 
 def fetch(
@@ -177,9 +182,14 @@ def fetch(
     except OSError:
         return ""
     matches = [f for f in facts if _relevant(f.skills, skill)]
-    if query:
+    if query and re.findall(r"\w+", query):
         try:
-            matches = _rank(matches, query)
+            scored = _bm25_scored(matches, query)
+            # Lens floor: a GLOBAL fact must clear the query/lens (score > 0) to be passed;
+            # a fact explicitly tagged to this skill always passes (it was scoped on purpose).
+            # This is what stops every skill from getting the same undifferentiated dump —
+            # react-patterns keeps only facts relevant to React, not the whole store.
+            matches = [f for f, s in scored if s > 0 or (skill in f.skills)]
         except Exception:  # noqa: BLE001,S110 — ranking must never break recall; keep order
             pass
     lines = []

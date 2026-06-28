@@ -99,6 +99,56 @@ def test_fetch_ranks_specific_over_boilerplate_bm25(tmp_path):
     assert out.splitlines()[0] == "- use 422 for validation errors"
 
 
+def test_fetch_lens_floor_excludes_off_topic_globals(tmp_path):
+    # one shared GLOBAL pool; a lens query must keep only what's relevant, not the whole dump
+    root = str(tmp_path)
+    facts.write_fact(
+        [],
+        "use TanStack Query for server state in React components",
+        "react server components and client data fetching",
+        project="proj",
+        root=root,
+    )
+    facts.write_fact(
+        [],
+        "validate user input to prevent SQL injection",
+        "parameterized queries at the boundary",
+        project="proj",
+        root=root,
+    )
+    out = facts.fetch("any", query="react components data fetching", project="proj", root=root)
+    assert "TanStack Query" in out
+    assert "SQL injection" not in out  # off-topic global dropped by the lens floor
+
+
+def test_fetch_lens_keeps_skill_tagged_even_if_off_topic(tmp_path):
+    # a fact explicitly scoped to the skill always passes, even with no lexical overlap
+    root = str(tmp_path)
+    facts.write_fact(
+        ["react-patterns"],
+        "this repo pins node to v20",
+        "node version is 20",
+        project="proj",
+        root=root,
+    )
+    out = facts.fetch("react-patterns", query="hooks components state", project="proj", root=root)
+    assert "node" in out
+
+
+def test_recall_skill_lens_reads_description(tmp_path, monkeypatch):
+    import recall
+
+    d = tmp_path / "react-patterns"
+    d.mkdir()
+    (d / "SKILL.md").write_text(
+        "---\nname: react-patterns\n"
+        "description: React hooks, components, and state\n---\n# method\n"
+    )
+    monkeypatch.setattr(recall, "_SKILLS_DIR", str(tmp_path))
+    lens = recall._skill_lens("react-patterns")
+    assert "hooks" in lens and "components" in lens
+
+
 def test_fetch_includes_global_facts(tmp_path):
     root = _seed(tmp_path, "g.md", GLOBAL_FACT)
     assert "Always validate input" in facts.fetch("anything", project="proj", root=root)

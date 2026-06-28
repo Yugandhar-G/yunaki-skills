@@ -38,6 +38,8 @@ DEFAULT_DB = os.path.expanduser(os.environ.get("CLAUDE_MEM_DB", "~/.claude-mem/c
 PORT_FALLBACK = 37777
 DEFAULT_LIMIT = 8
 _MAX_LINE = 300
+_SKILLS_DIR = os.path.expanduser(os.environ.get("YUNAKI_SKILLS_DIR", "~/.claude/skills"))
+_DESC_RE = re.compile(r"^description:\s*(.+?)\s*$", re.MULTILINE)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -278,6 +280,20 @@ def fetch_supermem(skill: str, query: str, limit: int) -> str:
         return ""
 
 
+def _skill_lens(skill: str) -> str:
+    """The skill's own `description:`, used as a relevance lens so recall keeps the facts THIS
+    skill is about (React for react-patterns), not the whole global pool. Never raises; returns
+    "" if the SKILL.md isn't found."""
+    safe = re.sub(r"[^A-Za-z0-9._-]", "", skill)  # constrain to one directory segment
+    try:
+        with open(os.path.join(_SKILLS_DIR, safe, "SKILL.md"), encoding="utf-8") as fh:
+            head = fh.read(4000)
+    except OSError:
+        return ""
+    m = _DESC_RE.search(head)
+    return m.group(1).strip() if m else ""
+
+
 def recall(
     skill: str,
     query: str | None = None,
@@ -291,7 +307,9 @@ def recall(
     Scopes to `project` (None → cwd basename = this repo; "" → all projects) but
     broadens to all projects if the scoped query finds nothing. Prefers the worker
     HTTP API; falls back to SQLite. Never raises."""
-    effective_query = (query or skill).strip()
+    # No explicit query → use the skill's description as the relevance lens (falls back to the
+    # skill name). This is what makes recall skill-specific instead of one global dump.
+    effective_query = (query or f"{skill} {_skill_lens(skill)}").strip()
     if not effective_query:
         return ""
     port = port if port is not None else detect_port()
