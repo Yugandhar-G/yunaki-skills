@@ -2,58 +2,104 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Skill Evolution · shared super memory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
- :root{--bg:#0a0c10;--panel:#11151c;--line:#1e2630;--text:#e6edf3;--dim:#8b97a6;
-   --accent:oklch(72% 0.17 158);--accent2:oklch(70% 0.15 230)}
+ :root{
+   --bg:#06070b; --text:#eaf0f7; --dim:#97a3b4;
+   --glass:rgba(255,255,255,.055); --glass-strong:rgba(255,255,255,.085);
+   --hair:rgba(255,255,255,.12); --hair-soft:rgba(255,255,255,.07);
+   --a1:oklch(72% .17 162); --a2:oklch(70% .15 225); --a3:oklch(64% .2 292);
+   --display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+   --body:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;
+ }
  *{box-sizing:border-box}
- body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#13202a 0,var(--bg) 60%);
-   color:var(--text);font:16px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-   min-height:100vh;display:grid;place-items:center;padding:6vh 5vw}
- main{max-width:760px;width:100%}
- .badge{display:inline-flex;align-items:center;gap:.5rem;font-size:.8rem;letter-spacing:.08em;
-   text-transform:uppercase;color:var(--accent);border:1px solid var(--line);border-radius:999px;
-   padding:.35rem .8rem;background:var(--panel)}
- .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
-   box-shadow:0 0 0 0 var(--accent);animation:p 2s infinite}
- @keyframes p{0%{box-shadow:0 0 0 0 oklch(72% 0.17 158/.7)}
-   70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
- h1{font-size:clamp(2.2rem,1rem + 5vw,3.6rem);line-height:1.05;margin:1.4rem 0 .6rem;letter-spacing:-.02em}
- h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),var(--accent2));
+ html,body{margin:0;min-height:100%}
+ body{background:var(--bg);color:var(--text);font-family:var(--body);
+   -webkit-font-smoothing:antialiased;line-height:1.6;overflow-x:hidden;
+   display:grid;place-items:center;padding:7vh 5vw}
+ /* ---- aurora mesh, sits behind the glass and shows through the blur ---- */
+ .aurora{position:fixed;inset:-20vmax;z-index:-2;filter:blur(70px) saturate(135%);opacity:.9}
+ .aurora i{position:absolute;display:block;border-radius:50%;mix-blend-mode:screen;animation:drift 26s ease-in-out infinite alternate}
+ .aurora i:nth-child(1){width:46vmax;height:46vmax;left:-4vmax;top:-6vmax;background:radial-gradient(circle at 30% 30%,var(--a1),transparent 62%)}
+ .aurora i:nth-child(2){width:42vmax;height:42vmax;right:-6vmax;top:2vmax;background:radial-gradient(circle at 60% 40%,var(--a2),transparent 62%);animation-duration:32s}
+ .aurora i:nth-child(3){width:40vmax;height:40vmax;left:22vmax;bottom:-12vmax;background:radial-gradient(circle at 50% 50%,var(--a3),transparent 62%);animation-duration:38s}
+ @keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(4vmax,3vmax,0) scale(1.12)}}
+ /* faint grain for texture */
+ .grain{position:fixed;inset:0;z-index:-1;opacity:.05;pointer-events:none;
+   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+ main{max-width:880px;width:100%}
+ .pill{display:inline-flex;align-items:center;gap:.5rem;font-size:.74rem;letter-spacing:.14em;
+   text-transform:uppercase;color:var(--text);padding:.4rem .85rem;border-radius:999px;
+   background:var(--glass);border:1px solid var(--hair);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+ .dot{width:8px;height:8px;border-radius:50%;background:var(--a1);box-shadow:0 0 12px var(--a1);animation:p 2.4s infinite}
+ @keyframes p{0%{box-shadow:0 0 0 0 oklch(72% .17 162/.55)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+ h1{font-family:var(--display);font-weight:700;letter-spacing:-.025em;line-height:1.02;
+   font-size:clamp(2.5rem,1rem + 6vw,4.4rem);margin:1.5rem 0 .7rem}
+ h1 em{font-style:normal;background:linear-gradient(100deg,var(--a1),var(--a2) 55%,var(--a3));
    -webkit-background-clip:text;background-clip:text;color:transparent}
- .lede{color:var(--dim);font-size:1.12rem;max-width:60ch}
+ .lede{color:var(--dim);font-size:1.14rem;max-width:60ch}
  .lede strong{color:var(--text);font-weight:600}
- .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin:2.2rem 0}
- @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
- .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1rem}
- .card b{display:block;font-size:1.9rem;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
- .card span{color:var(--dim);font-size:.82rem}
- .flow{font-size:.95rem;color:var(--dim);border-left:2px solid var(--accent);
-   padding:.2rem 0 .2rem 1rem;margin:1.6rem 0}
- .flow b{color:var(--text);font-weight:600}
- .api{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:1.6rem}
- code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;background:#0d1117;
-   border:1px solid var(--line);border-radius:8px;padding:.3rem .55rem;color:var(--text)}
+
+ .glass{background:var(--glass);border:1px solid var(--hair);border-radius:20px;
+   backdrop-filter:blur(22px) saturate(150%);-webkit-backdrop-filter:blur(22px) saturate(150%);
+   box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 24px 60px -28px rgba(0,0,0,.8)}
+
+ .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin:2.4rem 0}
+ @media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}
+ .tile{padding:1.25rem 1.1rem;transition:transform .25s cubic-bezier(.16,1,.3,1),border-color .25s}
+ .tile:hover{transform:translateY(-4px);border-color:var(--a1)}
+ .tile b{font-family:var(--display);display:block;font-size:2.1rem;font-weight:600;
+   font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+   background:linear-gradient(180deg,#fff,#bcd);-webkit-background-clip:text;background-clip:text;color:transparent}
+ .tile span{color:var(--dim);font-size:.8rem}
+
+ .loop{padding:1.1rem 1.25rem;display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;margin:1.4rem 0}
+ .loop .step{font-size:.92rem}
+ .loop .step b{font-family:var(--display);font-weight:600}
+ .loop .arrow{color:var(--a1);font-weight:700}
+ .loop .grad{background:linear-gradient(100deg,var(--a1),var(--a3));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:600}
+
+ .api{display:flex;flex-wrap:wrap;gap:.55rem;align-items:center;margin-top:1.5rem}
+ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+   padding:.4rem .65rem;border-radius:10px;background:rgba(0,0,0,.35);border:1px solid var(--hair-soft);color:var(--text)}
  .api small{color:var(--dim)}
- footer{margin-top:2.4rem;color:var(--dim);font-size:.82rem;
-   border-top:1px solid var(--line);padding-top:1.1rem}
-</style></head><body><main>
- <div class="badge"><span class="dot"></span> live</div>
- <h1>Skills that <em>keep learning</em> your repo.</h1>
- <p class="lede">A shared super memory for coding-agent skills. Every merged PR and failing
-  test becomes a repo-specific fact that's recalled into skills at load time — so your skills
-  keep evolving and the agents using them get better with every change.
-  <strong>No LLM in the learning loop, and the skill files are never rewritten.</strong></p>
- <section class="stats">
-  <div class="card"><b>__FACTS__</b><span>facts learned</span></div>
-  <div class="card"><b>__REPOS__</b><span>__REPO_WORD__ tracked</span></div>
-  <div class="card"><b>0</b><span>LLM calls to learn</span></div>
-  <div class="card"><b>PRs · tests</b><span>knowledge sources</span></div>
- </section>
- <p class="flow">every merged PR &amp; failing test &rarr; <b>a deterministic fact</b> &rarr; the
-  skill keeps evolving &rarr; and the agents using it evolve with it</p>
- <section class="api">
-  <code>GET /health</code><code>GET /recall</code><small>per-repo token</small>
-  <code>POST /webhook</code><small>GitHub</small>
- </section>
- <footer>deployed on DigitalOcean · automatic HTTPS · per-repo tokens · self-evolving from PR webhooks</footer>
-</main></body></html>
+ footer{margin-top:2.6rem;color:var(--dim);font-size:.82rem;border-top:1px solid var(--hair-soft);padding-top:1.2rem}
+
+ @media(prefers-reduced-motion:reduce){.aurora i,.dot{animation:none}.tile{transition:none}}
+</style></head>
+<body>
+ <div class="aurora"><i></i><i></i><i></i></div><div class="grain"></div>
+ <main>
+  <span class="pill"><span class="dot"></span> live · self-evolving</span>
+  <h1>Skills that <em>keep learning</em> your repo.</h1>
+  <p class="lede">A shared super memory for coding-agent skills. Every merged PR and failing
+   test becomes a repo-specific fact, recalled into skills at load time — so your skills keep
+   evolving and the agents using them get better with every change.
+   <strong>No LLM in the learning loop. The skill files are never rewritten.</strong></p>
+
+  <section class="stats">
+   <div class="tile glass"><b>__FACTS__</b><span>facts learned</span></div>
+   <div class="tile glass"><b>__REPOS__</b><span>__REPO_WORD__ tracked</span></div>
+   <div class="tile glass"><b>0</b><span>LLM calls to learn</span></div>
+   <div class="tile glass"><b>PRs · tests</b><span>knowledge sources</span></div>
+  </section>
+
+  <section class="loop glass">
+   <span class="step">merged PR / failing test</span><span class="arrow">→</span>
+   <span class="step"><b>a deterministic fact</b></span><span class="arrow">→</span>
+   <span class="step">the skill <span class="grad">keeps evolving</span></span><span class="arrow">→</span>
+   <span class="step">the agents <span class="grad">evolve with it</span></span>
+  </section>
+
+  <section class="api">
+   <code>GET /health</code><code>GET /recall</code><small>per-repo token</small>
+   <code>POST /webhook</code><small>GitHub</small>
+  </section>
+
+  <footer>deployed on DigitalOcean · automatic HTTPS · per-repo tokens · self-evolving from PR webhooks</footer>
+ </main>
+</body></html>
